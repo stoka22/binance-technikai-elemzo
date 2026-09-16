@@ -1079,7 +1079,7 @@ class BinanceApp(tk.Tk):
             if violations:
                 issues_text = "\n".join(f"• {v.message}" for v in violations)
             else:
-                issues_text = "Nem találtunk szabálysértést ennél az ügyletnél."
+                issues_text = f"Nem találtunk szabálysértést ennél az ügyletnél.\nHozam: {pnl:+.2f}%."
             messagebox.showinfo(
                 f"{icon} Ügylet lezárva: {pnl:+.2f}%",
                 f"{symbol} · {label}\n\nBelépés: {open_trade.entry_price:g}\nKilépés: {price:g}\n\n{issues_text}",
