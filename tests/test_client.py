@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 import requests
@@ -100,3 +102,31 @@ def test_get_tradable_symbols_exposes_base_quote_display(monkeypatch):
     assert len(infos) == 1
     assert infos[0].symbol == "BTCUSDT"
     assert infos[0].display == "BTC/USDT"
+
+
+def test_get_ticker_prices_parses_price_and_change(monkeypatch):
+    payload = [
+        {"symbol": "BTCUSDT", "lastPrice": "76000.50", "priceChangePercent": "1.23"},
+        {"symbol": "ETHUSDT", "lastPrice": "2400.10", "priceChangePercent": "-0.55"},
+    ]
+
+    def fake_get(url, params=None, timeout=None):
+        assert "ticker/24hr" in url
+        assert set(json.loads(params["symbols"])) == {"BTCUSDT", "ETHUSDT"}
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(client._session, "get", fake_get)
+
+    tickers = client.get_ticker_prices(["btcusdt", "ethusdt"])
+    by_symbol = {t.symbol: t for t in tickers}
+    assert by_symbol["BTCUSDT"].last_price == pytest.approx(76000.50)
+    assert by_symbol["ETHUSDT"].change_percent == pytest.approx(-0.55)
+
+
+def test_get_ticker_prices_empty_list_skips_request(monkeypatch):
+    def fake_get(*args, **kwargs):
+        raise AssertionError("nem szabadna HTTP hívást indítani üres listára")
+
+    monkeypatch.setattr(client._session, "get", fake_get)
+
+    assert client.get_ticker_prices([]) == []

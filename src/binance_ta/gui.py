@@ -28,7 +28,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from binance_ta.client import BinanceAPIError, SymbolInfo, fetch_klines, get_tradable_symbols
+from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_klines, get_ticker_prices, get_tradable_symbols
 from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
 from binance_ta.logging_setup import configure_logging
@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
 MIN_LIVE_REFRESH_SECONDS = 5
+WATCHLIST_REFRESH_SECONDS = 15
 APP_TITLE = "📈 Binance Technikai Elemző"
 APP_VERSION = "0.3.0"
 
@@ -135,7 +136,11 @@ class BinanceApp(tk.Tk):
 
         self._all_symbols: set[str] = set()
         self._all_symbol_infos: list[SymbolInfo] = []
+        self._symbol_info_by_name: dict[str, SymbolInfo] = {}
         self._live_after_id: str | None = None
+        self._watchlist_after_id: str | None = None
+        self._watchlist_tickers: dict[str, TickerInfo] = {}
+        self._watchlist_request_id = 0
         self._tooltips: list[ToolTip] = []
         self.canvas = None
         self.toolbar = None
@@ -321,13 +326,50 @@ class BinanceApp(tk.Tk):
         self._tooltip(info_btn, f"Kattints a(z) {info_key} indikátor rövid leírásáért.")
 
     def _build_chart_area(self):
-        self.chart_frame = ttk.Frame(self)
-        self.chart_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        content = ttk.Frame(self)
+        content.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self._build_watchlist(content)
+
+        self.chart_frame = ttk.Frame(content)
+        self.chart_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         ttk.Label(
             self.chart_frame,
             text="Add meg a szimbólumot és nyomd meg a '🔄 Lekérés és rajzolás' gombot.",
             anchor="center",
         ).pack(expand=True)
+
+    def _build_watchlist(self, parent):
+        frame = ttk.LabelFrame(parent, text="⭐ Watchlist", width=210)
+        frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+        frame.pack_propagate(False)
+
+        columns = ("pair", "price", "change")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+        tree.heading("pair", text="Pár")
+        tree.heading("price", text="Ár")
+        tree.heading("change", text="24ó %")
+        tree.column("pair", width=85, anchor="w")
+        tree.column("price", width=70, anchor="e")
+        tree.column("change", width=55, anchor="e")
+        tree.tag_configure("up", foreground="#0ecb81")
+        tree.tag_configure("down", foreground="#f6465d")
+        tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 2))
+        tree.bind("<<TreeviewSelect>>", self._on_watchlist_select)
+
+        self.watchlist_tree = tree
+        self._tooltip(
+            tree, "A csillagozott kedvenc szimbólumok friss ára és 24 órás\nváltozása, kb. "
+            f"{WATCHLIST_REFRESH_SECONDS} mp-enként frissül. Kattints egy sorra a chart betöltéséhez."
+        )
+
+        self._watchlist_empty_label = ttk.Label(
+            frame, text="Még nincs kedvenc.\nCsillagozz a 🔍 választóban.",
+            foreground="#888888", anchor="center", justify="center", wraplength=190,
+        )
+
+        self._render_watchlist()
+        self._refresh_watchlist()
 
     def _build_statusbar(self):
         self.status_var = tk.StringVar(value="Kész.")
@@ -351,7 +393,9 @@ class BinanceApp(tk.Tk):
     def _on_symbols_loaded(self, infos: list[SymbolInfo]):
         self._all_symbol_infos = infos
         self._all_symbols = {info.symbol for info in infos}
+        self._symbol_info_by_name = {info.symbol: info for info in infos}
         self.status_var.set(f"Kész. ({len(infos)} kereskedhető szimbólum betöltve)")
+        self._render_watchlist()
 
     def _open_symbol_picker(self):
         if not self._all_symbol_infos:
@@ -378,6 +422,94 @@ class BinanceApp(tk.Tk):
         elif not is_favorite and symbol in favorites:
             favorites.remove(symbol)
         self.settings.save()
+        self._refresh_watchlist()
+
+    # ---------- Watchlist (kedvencek árai egyszerre) ----------
+
+    def _refresh_watchlist(self):
+        if self._watchlist_after_id is not None:
+            self.after_cancel(self._watchlist_after_id)
+            self._watchlist_after_id = None
+
+        # A kedvenc-lista (nevek) azonnal megjelenik, még az árak beérkezése előtt is -
+        # így pl. egy csillagozás után rögtön látszik az új sor ("…" ár-placeholderrel).
+        self._render_watchlist()
+
+        favorites = list(self.settings.favorite_symbols)
+        if not favorites:
+            self._schedule_next_watchlist_refresh()
+            return
+
+        # Ha gyors egymásutánban több kedvenc-váltás is történik, több lekérés is
+        # párhuzamosan futhat - csak a legutóbb indítottét fogadjuk el, hogy egy
+        # korábban indult, de később visszaérkező (hiányosabb) válasz ne írja
+        # felül a frissebbet.
+        self._watchlist_request_id += 1
+        request_id = self._watchlist_request_id
+
+        def worker():
+            try:
+                tickers = get_ticker_prices(favorites)
+            except BinanceAPIError as exc:
+                logger.warning("Watchlist frissítése sikertelen: %s", exc)
+                self.after(0, self._schedule_next_watchlist_refresh)
+                return
+            self.after(0, self._on_watchlist_loaded, tickers, request_id)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_watchlist_loaded(self, tickers: list[TickerInfo], request_id: int):
+        if request_id != self._watchlist_request_id:
+            return  # időközben újabb kérés indult, ez az eredmény már elavult
+        self._watchlist_tickers = {t.symbol: t for t in tickers}
+        self._render_watchlist()
+        self._schedule_next_watchlist_refresh()
+
+    def _schedule_next_watchlist_refresh(self):
+        self._watchlist_after_id = self.after(WATCHLIST_REFRESH_SECONDS * 1000, self._refresh_watchlist)
+
+    def _render_watchlist(self):
+        tree = self.watchlist_tree
+        selected = tree.selection()
+        tree.delete(*tree.get_children())
+
+        favorites = self.settings.favorite_symbols
+        if not favorites:
+            self._watchlist_empty_label.pack(expand=True, pady=20)
+            return
+        self._watchlist_empty_label.pack_forget()
+
+        tickers = self._watchlist_tickers
+        for symbol in favorites:
+            info = self._symbol_info_by_name.get(symbol)
+            pair_text = info.display if info else symbol
+            ticker = tickers.get(symbol)
+            if ticker is None:
+                tree.insert("", tk.END, iid=symbol, values=(pair_text, "…", ""))
+                continue
+            price_text = self._format_price(ticker.last_price)
+            change_text = f"{ticker.change_percent:+.2f}%"
+            tag = "up" if ticker.change_percent >= 0 else "down"
+            tree.insert("", tk.END, iid=symbol, values=(pair_text, price_text, change_text), tags=(tag,))
+
+        if selected and selected[0] in favorites:
+            tree.selection_set(selected[0])
+
+    @staticmethod
+    def _format_price(value: float) -> str:
+        if value >= 1:
+            return f"{value:,.2f}"
+        return f"{value:.8f}".rstrip("0").rstrip(".")
+
+    def _on_watchlist_select(self, _event=None):
+        selection = self.watchlist_tree.selection()
+        if not selection:
+            return
+        symbol = selection[0]
+        if symbol == self.symbol_var.get().strip().upper():
+            return
+        self.symbol_var.set(symbol)
+        self.on_fetch(manual=True)
 
     # ---------- Bemenet begyűjtése ----------
 
@@ -499,6 +631,9 @@ class BinanceApp(tk.Tk):
 
     def _on_close(self):
         self._cancel_live_refresh()
+        if self._watchlist_after_id is not None:
+            self.after_cancel(self._watchlist_after_id)
+            self._watchlist_after_id = None
         self.destroy()
 
     # ---------- Rajzolás ----------

@@ -13,6 +13,8 @@ frissítéssel.
 - Egérrel követhető kereszt (crosshair) OHLC tooltippel a charton
 - Görgővel nagyítás/kicsinyítés (arányos ár-skálával), jobb gombos húzással mozgatás
 - Kereshető szimbólum-választó ablak (🔍), "BASE/QUOTE" formázással és csillagozható kedvencekkel
+- ⭐ Watchlist oldalsáv: az összes kedvenc ára és 24 órás %-os változása egyszerre látszik,
+  kb. 15 mp-enként frissülve - kattintással betölthető a chartra
 - A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)

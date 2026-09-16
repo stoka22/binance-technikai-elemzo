@@ -9,6 +9,7 @@ Robusztussági szempontok:
 - ``logging`` a print helyett, hogy a hibák fájlba is kerüljenek.
 """
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.binance.com"
 KLINES_ENDPOINT = f"{BASE_URL}/api/v3/klines"
 EXCHANGE_INFO_ENDPOINT = f"{BASE_URL}/api/v3/exchangeInfo"
+TICKER_24H_ENDPOINT = f"{BASE_URL}/api/v3/ticker/24hr"
 
 # A Binance /klines végpontja egy oszloplistát ad vissza, ezek a nevei sorrendben:
 KLINE_COLUMNS = [
@@ -68,6 +70,15 @@ class SymbolInfo:
     def display(self) -> str:
         """Olvasható forma, pl. "BTC/USDT" - ezt mutatjuk a szimbólum-választóban."""
         return f"{self.base_asset}/{self.quote_asset}"
+
+
+@dataclass(frozen=True)
+class TickerInfo:
+    """Egy szimbólum aktuális ára és 24 órás változása (watchlisthez)."""
+
+    symbol: str
+    last_price: float
+    change_percent: float
 
 
 def fetch_klines(symbol: str, interval: str, limit: int = 500) -> pd.DataFrame:
@@ -135,3 +146,32 @@ def get_tradable_symbols(force_refresh: bool = False) -> list[SymbolInfo]:
 def get_exchange_symbols(force_refresh: bool = False) -> list[str]:
     """A kereskedhető szimbólumok neve egyszerű listaként (pl. validációhoz)."""
     return [info.symbol for info in get_tradable_symbols(force_refresh)]
+
+
+def get_ticker_prices(symbols: list[str]) -> list[TickerInfo]:
+    """Aktuális ár és 24 órás %-os változás több szimbólumra, egy hívással (watchlisthez).
+
+    Raises:
+        BinanceAPIError: ha a kérés hálózati hiba vagy hibás státuszkód miatt
+            nem sikerül.
+    """
+    if not symbols:
+        return []
+
+    upper_symbols = [s.upper() for s in symbols]
+    # A Binance a "symbols" paraméternél szóköz nélküli, kompakt JSON tömböt vár
+    # (pl. ["BTCUSDT","ETHUSDT"]) - a json.dumps alapértelmezett ", " elválasztója
+    # szóközt tartalmazna, amit a szerver 400-cal utasít el.
+    params = {"symbols": json.dumps(upper_symbols, separators=(",", ":"))}
+    try:
+        response = _session.get(TICKER_24H_ENDPOINT, params=params, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        logger.exception("Hiba a watchlist árak lekérésekor")
+        raise BinanceAPIError(f"Nem sikerült lekérni a watchlist árakat: {exc}") from exc
+
+    data = response.json()
+    return [
+        TickerInfo(entry["symbol"], float(entry["lastPrice"]), float(entry["priceChangePercent"]))
+        for entry in data
+    ]
