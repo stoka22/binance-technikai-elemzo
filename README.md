@@ -32,6 +32,9 @@ frissítéssel.
   a veszteséget, hagyd futni a nyereséget), a napló-ablak pedig kimutatja a nyerő
   arányt, a profit faktort és a leggyakoribb hibákat - ez segít saját, automata
   szűrő-szabályokat (pl. a Piac-szűrőben) felállítani
+- 🔔 Javasolt be-/kilépési jelzések a charton: zöld ▲ / piros ▼ ott, ahol a Piac-szűrővel
+  azonos technikai pontszám átlépi a Beállításokban megadott küszöböt (visszatekintő,
+  tanulási célú - nem előrejelzés)
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)

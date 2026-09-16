@@ -34,4 +34,19 @@ INDICATOR_INFO: dict[str, str] = {
         "volumen melletti árelmozdulás megbízhatóbb jelzésnek számít, mint "
         "alacsony volumen mellett."
     ),
+    "Jelzések": (
+        "Javasolt be-/kilépési jelzések\n\n"
+        "Ugyanaz a folytonos technikai pontszám (0-100%) áll mögötte, mint a "
+        "Piac-szűrő eszközé: RSI, MACD, SMA-trend és Bollinger-pozíció "
+        "átlaga, volumennel súlyozva - rögzített, standard paraméterekkel "
+        "(RSI14, SMA20/50, Bollinger20), függetlenül attól, mit állítottál "
+        "be a fenti indikátor-dobozokban.\n\n"
+        "A zöld ▲ ott jelenik meg, ahol a pontszám átlépi felfelé a "
+        "Beállításokban megadott küszöböt (alapból 90%), a piros ▼ ott, "
+        "ahol lefelé lépi át a tükrözött (100-küszöb) szintet - csak az "
+        "átlépés pillanatában, nem minden gyertyán, amíg a szint fölött/"
+        "alatt marad.\n\n"
+        "Ez egy tanulási célú, visszatekintő jelzésrendszer - NEM "
+        "befektetési tanács és nem garantál semmit a jövőre nézve."
+    ),
 }

@@ -1,7 +1,13 @@
 import numpy as np
 import pandas as pd
+import pytest
 
-from binance_ta.scoring import MIN_ROWS_REQUIRED, compute_score
+from binance_ta.scoring import (
+    MIN_ROWS_REQUIRED,
+    compute_score,
+    compute_score_series,
+    find_signal_crossings,
+)
 
 
 def _make_df(closes, volumes=None) -> pd.DataFrame:
@@ -81,3 +87,35 @@ def test_high_volume_amplifies_composite_magnitude():
 
     assert low is not None and high is not None
     assert abs(high.composite) >= abs(low.composite)
+
+
+def test_score_series_last_value_matches_single_score():
+    closes = [100.0 - i * 0.8 for i in range(90)]
+    df = _make_df(closes)
+
+    single = compute_score(df)
+    series = compute_score_series(df)
+
+    assert single is not None
+    assert series.iloc[-1] == pytest.approx(single.percent)
+
+
+def test_score_series_is_nan_during_warmup_and_matches_df_index():
+    closes = [100.0 + i * 0.1 for i in range(90)]
+    df = _make_df(closes)
+
+    series = compute_score_series(df)
+
+    assert list(series.index) == list(df.index)
+    # a SMA50-hez legalább 50 gyertya kell - előtte biztosan NaN
+    assert series.iloc[:45].isna().all()
+    assert series.iloc[-1:].notna().all()
+
+
+def test_find_signal_crossings_fires_only_on_the_crossing_candle():
+    score = pd.Series([50.0, 60.0, 92.0, 95.0, 91.0, 60.0, 5.0, 3.0, 50.0])
+
+    buy, sell = find_signal_crossings(score, buy_threshold=90, sell_threshold=10)
+
+    assert list(buy) == [False, False, True, False, False, False, False, False, False]
+    assert list(sell) == [False, False, False, False, False, False, True, False, False]

@@ -35,6 +35,7 @@ from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sm
 from binance_ta.journal_window import JournalWindow
 from binance_ta.logging_setup import configure_logging
 from binance_ta.screener_window import ScreenerWindow
+from binance_ta.scoring import MIN_ROWS_REQUIRED, compute_score_series, find_signal_crossings
 from binance_ta.settings import Settings
 from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
@@ -288,7 +289,7 @@ class BinanceApp(tk.Tk):
         messagebox.showinfo(f"{key} - mit jelent?", INDICATOR_INFO[key], parent=self)
 
     def _show_all_indicator_info(self):
-        text = "\n\n".join(INDICATOR_INFO[key] for key in ("SMA", "Bollinger", "RSI", "MACD", "Volumen"))
+        text = "\n\n".join(INDICATOR_INFO[key] for key in ("SMA", "Bollinger", "RSI", "MACD", "Volumen", "Jelzések"))
         messagebox.showinfo("Indikátorok magyarázata", text, parent=self)
 
     def _show_about(self):
@@ -372,6 +373,9 @@ class BinanceApp(tk.Tk):
 
         self.volume_enabled = tk.BooleanVar(value=True)
         self._add_indicator_cell(indicators, 4, "▮ Volumen", self.volume_enabled, None, "Volumen")
+
+        self.signals_enabled = tk.BooleanVar(value=False)
+        self._add_indicator_cell(indicators, 5, "🔔 Jelzések", self.signals_enabled, None, "Jelzések")
 
         self._build_practice_panel(bar)
 
@@ -651,6 +655,7 @@ class BinanceApp(tk.Tk):
             "rsi_period": int(self.rsi_period_var.get()),
             "macd": self.macd_enabled.get(),
             "volume": self.volume_enabled.get(),
+            "signals": self.signals_enabled.get(),
         }
 
     # ---------- Adatlekérés ----------
@@ -699,6 +704,8 @@ class BinanceApp(tk.Tk):
                 df = add_rsi(df, opts["rsi_period"])
             if opts["macd"]:
                 df = add_macd(df)
+            if opts["signals"]:
+                df["signal_score"] = compute_score_series(df)
         except BinanceAPIError as exc:
             self.after(0, self._on_fetch_error, exc, manual)
             return
@@ -796,6 +803,24 @@ class BinanceApp(tk.Tk):
             addplots.append(
                 mpf.make_addplot(indexed[f"bb_lower_{opts['bb_period']}"], panel=0, color="#888888", width=0.8, linestyle="--")
             )
+
+        if opts["signals"] and "signal_score" in df.columns:
+            buy_threshold = self.settings.screener_min_score
+            sell_threshold = 100 - buy_threshold
+            buy_mask, sell_mask = find_signal_crossings(indexed["signal_score"], buy_threshold, sell_threshold)
+
+            if buy_mask.any():
+                buy_marker = pd.Series(float("nan"), index=indexed.index)
+                buy_marker[buy_mask] = indexed["low"][buy_mask] * 0.99
+                addplots.append(
+                    mpf.make_addplot(buy_marker, panel=0, type="scatter", markersize=90, marker="^", color="#0ecb81")
+                )
+            if sell_mask.any():
+                sell_marker = pd.Series(float("nan"), index=indexed.index)
+                sell_marker[sell_mask] = indexed["high"][sell_mask] * 1.01
+                addplots.append(
+                    mpf.make_addplot(sell_marker, panel=0, type="scatter", markersize=90, marker="v", color="#f6465d")
+                )
 
         next_panel = 2 if opts["volume"] else 1
         if opts["rsi"]:

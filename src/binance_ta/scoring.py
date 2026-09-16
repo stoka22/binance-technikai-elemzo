@@ -102,3 +102,61 @@ def compute_score(df: pd.DataFrame) -> ScoreBreakdown | None:
         rsi=rsi_score, macd=macd_score, trend=trend_score, bollinger=bollinger_score,
         volume_factor=volume_factor, composite=composite,
     )
+
+
+def compute_score_series(df: pd.DataFrame) -> pd.Series:
+    """A compute_score() ugyanazon logikájával számolt pontszám (0-100%)
+    minden sorra, vektorizáltan - ez teszi lehetővé, hogy a chart teljes
+    látható idősávján megjelenjenek a jelzések, ne csak a legutolsó gyertyán.
+
+    A df eredeti indexével tér vissza; ahol nincs elég előtörténet (az első
+    ~60 gyertyánál), NaN szerepel.
+    """
+    work = df.copy()
+    work = add_rsi(work, period=14)
+    work = add_macd(work)
+    work = add_sma(work, period=20)
+    work = add_sma(work, period=50)
+    work = add_bollinger_bands(work, period=20)
+
+    close = work["close"]
+
+    rsi_score = ((50 - work["rsi_14"]) / 30).clip(-1, 1)
+
+    hist_std = work["macd_hist"].rolling(50).std()
+    macd_score = (work["macd_hist"] / (2 * hist_std)).clip(-1, 1)
+    macd_score = macd_score.where(hist_std > 0, 0.0).fillna(0.0)
+
+    trend_score = ((close / work["sma_20"] - 1) * 20).clip(-1, 1)
+    trend_bias = pd.Series(np.where(work["sma_20"] < work["sma_50"], -0.2, 0.2), index=work.index)
+    trend_score = (trend_score + trend_bias).clip(-1, 1)
+
+    band_width = work["bb_upper_20"] - work["bb_lower_20"]
+    position = (close - work["bb_lower_20"]) / band_width
+    bollinger_score = ((0.5 - position) * 2).clip(-1, 1)
+    bollinger_score = bollinger_score.where(band_width > 0, 0.0)
+
+    composite = (rsi_score + macd_score + trend_score + bollinger_score) / 4
+
+    avg_volume = work["volume"].rolling(20).mean()
+    volume_factor = (0.8 + 0.2 * work["volume"] / avg_volume).clip(0.7, 1.3)
+    volume_factor = volume_factor.where(avg_volume > 0, 1.0).fillna(1.0)
+    composite = (composite * volume_factor).clip(-1, 1)
+
+    percent = (composite + 1) / 2 * 100
+
+    required_cols = ["rsi_14", "macd_hist", "sma_20", "sma_50", "bb_upper_20", "bb_lower_20"]
+    valid = work[required_cols].notna().all(axis=1)
+    return percent.where(valid)
+
+
+def find_signal_crossings(
+    score_percent: pd.Series, buy_threshold: float, sell_threshold: float
+) -> tuple[pd.Series, pd.Series]:
+    """Azok a pontok, ahol a pontszám ÁTLÉPI (nem csak túllépi) a küszöböt -
+    így csak a jelzés kezdetén kapunk jelölést, nem minden gyertyán, amíg a
+    pontszám a küszöb fölött/alatt marad."""
+    prev = score_percent.shift(1)
+    buy_signal = (score_percent >= buy_threshold) & (prev < buy_threshold)
+    sell_signal = (score_percent <= sell_threshold) & (prev > sell_threshold)
+    return buy_signal.fillna(False), sell_signal.fillna(False)
