@@ -1,8 +1,8 @@
 """Grafikus (Tkinter) Windows alkalmazás: Binance árfolyam lekérése,
 gyertya (candlestick) chart, SMA / Bollinger / RSI / MACD indikátorok,
 élő (automatikus) frissítés, egérrel követhető kereszt (crosshair),
-felugró súgó buborékok és beállítások-ablak. A felület a rendszer
-alapértelmezett (natív) ttk megjelenítését használja.
+felugró súgó buborékok és beállítások-ablak. A felület induláskor
+automatikusan felveszi a Windows aktuális (világos/sötét) rendszertémáját.
 
 Indítás:
     python -m binance_ta.gui
@@ -34,6 +34,7 @@ from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sm
 from binance_ta.logging_setup import configure_logging
 from binance_ta.settings import Settings
 from binance_ta.tooltip import ToolTip
+from binance_ta.win_theme import enable_dark_titlebar, prefers_dark
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,12 @@ MIN_LIVE_REFRESH_SECONDS = 5
 APP_TITLE = "📈 Binance Technikai Elemző"
 APP_VERSION = "0.3.0"
 
-# A chart mindig ezt az (egységesen világos, Binance-stílusú) chart-témát
-# használja - a felhasználó a rendszer natív felületét kérte, egyedi
-# sötét/világos app-témát nem kínálunk fel.
-MPF_STYLE = "binance"
-CROSSHAIR_BG = "#ffffe0"
-CROSSHAIR_FG = "#000000"
+# A chart Binance-stílusa a rendszer aktuális témájához igazodik
+# (a mplfinance-nek van kifejezetten erre a célra beépített dark variánsa).
+LIGHT_MPF_STYLE = "binance"
+DARK_MPF_STYLE = "binancedark"
+LIGHT_CROSSHAIR = ("#ffffe0", "#000000")
+DARK_CROSSHAIR = ("#2b2b2b", "#ffffff")
 
 
 class SettingsDialog(tk.Toplevel):
@@ -137,12 +138,55 @@ class BinanceApp(tk.Tk):
         self.canvas = None
         self.toolbar = None
 
+        self._apply_system_theme()
         self._build_menu()
         self._build_controls()
         self._build_chart_area()
         self._build_statusbar()
 
         self._load_symbols_async()
+
+    # ---------- Rendszertéma (világos/sötét) ----------
+
+    def _apply_system_theme(self):
+        """A Windows aktuális "Alkalmazásszín" beállítását veszi fel indításkor.
+
+        Csak induláskor derítjük ki - ha valaki menet közben átkapcsolja a
+        Windows témáját, az alkalmazás újraindítása szükséges a követéshez.
+        """
+        dark = prefers_dark()
+        style = ttk.Style(self)
+
+        if dark:
+            style.theme_use("clam")
+            bg, fg, field_bg, border = "#202020", "#f2f2f2", "#2b2b2b", "#3f3f3f"
+
+            self.configure(bg=bg)
+            style.configure(".", background=bg, foreground=fg, fieldbackground=field_bg, bordercolor=border)
+            for name in ("TFrame", "TLabel", "TCheckbutton", "TRadiobutton", "TLabelframe", "TLabelframe.Label"):
+                style.configure(name, background=bg, foreground=fg)
+            style.configure("TButton", background=field_bg, foreground=fg, padding=4)
+            style.map("TButton", background=[("active", border)])
+            style.configure("TEntry", fieldbackground=field_bg, foreground=fg, insertcolor=fg)
+            style.configure("TCombobox", fieldbackground=field_bg, foreground=fg)
+            style.map("TCombobox", fieldbackground=[("readonly", field_bg)], foreground=[("readonly", fg)])
+            style.configure("TSeparator", background=border)
+
+            self.option_add("*TCombobox*Listbox.background", field_bg)
+            self.option_add("*TCombobox*Listbox.foreground", fg)
+            self.option_add("*Menu.background", bg)
+            self.option_add("*Menu.foreground", fg)
+            self.option_add("*Menu.activeBackground", border)
+            self.option_add("*Menu.activeForeground", fg)
+
+            self._mpf_style = DARK_MPF_STYLE
+            self._crosshair_bg, self._crosshair_fg = DARK_CROSSHAIR
+        else:
+            style.theme_use("vista")
+            self._mpf_style = LIGHT_MPF_STYLE
+            self._crosshair_bg, self._crosshair_fg = LIGHT_CROSSHAIR
+
+        enable_dark_titlebar(self, dark)
 
     # ---------- Menüsor ----------
 
@@ -483,7 +527,7 @@ class BinanceApp(tk.Tk):
         fig, axlist = mpf.plot(
             ohlc,
             type="candle",
-            style=MPF_STYLE,
+            style=self._mpf_style,
             addplot=addplots or None,
             volume=opts["volume"],
             returnfig=True,
@@ -522,8 +566,8 @@ class BinanceApp(tk.Tk):
         hline = ax.axhline(color="gray", lw=0.6, ls=":", visible=False)
         annot = ax.annotate(
             "", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-            bbox=dict(boxstyle="round", fc=CROSSHAIR_BG, ec=CROSSHAIR_FG, alpha=0.9),
-            fontsize=8, color=CROSSHAIR_FG,
+            bbox=dict(boxstyle="round", fc=self._crosshair_bg, ec=self._crosshair_fg, alpha=0.9),
+            fontsize=8, color=self._crosshair_fg,
         )
         annot.set_visible(False)
         n = len(df)
