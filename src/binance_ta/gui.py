@@ -9,6 +9,7 @@ Indítás:
 """
 
 import logging
+import math
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -580,6 +581,14 @@ class BinanceApp(tk.Tk):
         self.toolbar = toolbar
 
         self._attach_crosshair(axlist[0], df)
+        self._attach_scroll_zoom(axlist[0], df)
+        self._attach_pan(axlist[0], df)
+        self._tooltip(
+            canvas.get_tk_widget(),
+            "Görgesd az egeret a nagyításhoz/kicsinyítéshez (a kurzor pozíciója körül,\n"
+            "az ár-skála arányosan követi). Jobb egérgombbal húzva mozgathatod balra-jobbra.\n"
+            "Az eszköztár Home gombja visszaállítja az eredeti nézetet.",
+        )
 
     def _attach_crosshair(self, ax, df: pd.DataFrame):
         """Egérrel követett szaggatott kereszt + OHLC tooltip az ár-panelen."""
@@ -621,6 +630,101 @@ class BinanceApp(tk.Tk):
             event.canvas.draw_idle()
 
         ax.figure.canvas.mpl_connect("motion_notify_event", on_move)
+
+    def _rescale_price_y(self, ax, df: pd.DataFrame):
+        """Az ár-tengely (y) arányos beállítása a jelenleg látható gyertyákhoz.
+
+        A mplfinance a gyertyákat matplotlib collection-ként rajzolja, amiket
+        az `Axes.relim()` nem vesz figyelembe, ezért a látható index-tartomány
+        low/high értékeiből kézzel számoljuk ki az új y-tartományt.
+        """
+        n = len(df)
+        xmin, xmax = ax.get_xlim()
+        lo = max(0, int(math.floor(xmin)))
+        hi = min(n - 1, int(math.ceil(xmax)))
+        if lo > hi:
+            return
+
+        window = df.iloc[lo : hi + 1]
+        y_min = window["low"].min()
+        y_max = window["high"].max()
+        if pd.isna(y_min) or pd.isna(y_max) or y_min == y_max:
+            return
+
+        padding = (y_max - y_min) * 0.08
+        ax.set_ylim(y_min - padding, y_max + padding)
+
+    def _attach_scroll_zoom(self, ax, df: pd.DataFrame):
+        """Egérgörgővel nagyítás/kicsinyítés a kurzor pozíciója körül (idő tengely).
+
+        A `mpf.plot` panelei egy közös (sharex) idő tengelyen osztoznak, ezért
+        elég csak az ár-panel xlim-jét módosítani - a többi panel (volumen,
+        RSI, MACD) automatikusan követi. Az ár (y) tengely minden zoomolás
+        után arányosan újraszámolódik a látható gyertyákhoz.
+        """
+        n = len(df)
+        min_visible = min(10, n)
+
+        def on_scroll(event):
+            if event.xdata is None:
+                return
+
+            cur_min, cur_max = ax.get_xlim()
+            cur_range = cur_max - cur_min
+            if cur_range <= 0:
+                return
+
+            zoom_in = event.button == "up"
+            factor = 0.85 if zoom_in else 1 / 0.85
+            new_range = cur_range * factor
+            new_range = max(min_visible, min(new_range, n * 1.3))
+
+            rel = (event.xdata - cur_min) / cur_range
+            new_min = event.xdata - rel * new_range
+            new_max = new_min + new_range
+
+            ax.set_xlim(new_min, new_max)
+            self._rescale_price_y(ax, df)
+            event.canvas.draw_idle()
+
+        ax.figure.canvas.mpl_connect("scroll_event", on_scroll)
+
+    def _attach_pan(self, ax, df: pd.DataFrame):
+        """Jobb egérgombbal húzva balra-jobbra mozgatható a chart (időben).
+
+        Pixel-alapú elmozdulást számolunk (nem adat-koordinátát), mert a
+        húzás közben az xlim - és vele az adat/pixel arány - folyamatosan
+        változna, ha a kurzor alatti adat-koordinátát vennénk referenciának.
+        """
+        state = {}
+
+        def on_press(event):
+            if event.button != 3 or event.inaxes != ax:
+                return
+            state["pixel_x"] = event.x
+            state["xlim"] = ax.get_xlim()
+
+        def on_release(event):
+            if event.button == 3:
+                state.clear()
+
+        def on_motion(event):
+            if "pixel_x" not in state or event.x is None:
+                return
+            xmin, xmax = state["xlim"]
+            bbox = ax.get_window_extent()
+            if bbox.width <= 0:
+                return
+            data_per_pixel = (xmax - xmin) / bbox.width
+            dx_data = (event.x - state["pixel_x"]) * data_per_pixel
+
+            ax.set_xlim(xmin - dx_data, xmax - dx_data)
+            self._rescale_price_y(ax, df)
+            event.canvas.draw_idle()
+
+        ax.figure.canvas.mpl_connect("button_press_event", on_press)
+        ax.figure.canvas.mpl_connect("button_release_event", on_release)
+        ax.figure.canvas.mpl_connect("motion_notify_event", on_motion)
 
 
 def main() -> None:
