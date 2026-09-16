@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "binance-ta"
+version = "0.1.0"
+description = "Binance árfolyam-lekérő és technikai elemző (SMA/RSI/MACD/Bollinger) grafikus Windows alkalmazás, tanulási céllal."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "mplfinance>=0.12.10b0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+binance-ta-gui = "binance_ta.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
