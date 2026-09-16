@@ -23,7 +23,9 @@ frissítéssel.
 - 📡 Piac-szűrő (Eszközök menü): technikai pontszázalékot (RSI+MACD+trend+Bollinger,
   volumennel súlyozva) számol az összes (vagy quote eszköz szerint szűrt) szimbólumra,
   és a Beállításokban megadott küszöb fölött/alatt 🟢/🔴 jelzést ad - **ez egy technikai
-  szűrő, nem befektetési tanács**, a UI is jelzi
+  szűrő, nem befektetési tanács**, a UI is jelzi. A rendkívül alacsony likviditású
+  (jellemzően nulla volumenű, lapos gyertyás) párokat automatikusan kihagyja, mert
+  ezekre sem a pontszám, sem a chart nem adna megbízható/áttekinthető képet
 - A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
 - 🎯 Gyakorlás mód: kattints egy gyertyára a belépéshez, egy másikra a záráshoz -
   a szimulált (Long/Short) ügylet rögzítésre kerül a 📒 Kereskedési naplóban.

@@ -20,6 +20,12 @@ from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sm
 
 MIN_ROWS_REQUIRED = 60  # SMA50 + MACD stabilizálódásához kell ennyi gyertya
 
+# Ha az utolsó 20 gyertya több mint fele nulla volumenű (nincs tényleges
+# kereskedés, az ár csak "megáll"), a jelzés megbízhatatlan - inkább nem
+# adunk pontszámot, mint hogy félrevezető (és vizuálisan is szinte üres,
+# lapos gyertyákkal teli) szimbólumot ajánljunk.
+ILLIQUID_ZERO_VOLUME_RATIO = 0.5
+
 
 @dataclass(frozen=True)
 class ScoreBreakdown:
@@ -60,6 +66,9 @@ def compute_score(df: pd.DataFrame) -> ScoreBreakdown | None:
 
     last = work.iloc[-1]
     if last[["rsi_14", "macd_hist", "sma_20", "sma_50", "bb_upper_20", "bb_lower_20"]].isna().any():
+        return None
+
+    if (work["volume"].tail(20) == 0).mean() > ILLIQUID_ZERO_VOLUME_RATIO:
         return None
 
     close = last["close"]
@@ -147,6 +156,10 @@ def compute_score_series(df: pd.DataFrame) -> pd.Series:
 
     required_cols = ["rsi_14", "macd_hist", "sma_20", "sma_50", "bb_upper_20", "bb_lower_20"]
     valid = work[required_cols].notna().all(axis=1)
+
+    zero_volume_ratio = (work["volume"] == 0).rolling(20).mean()
+    valid = valid & (zero_volume_ratio <= ILLIQUID_ZERO_VOLUME_RATIO)
+
     return percent.where(valid)
 
 

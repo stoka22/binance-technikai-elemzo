@@ -35,7 +35,7 @@ from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sm
 from binance_ta.journal_window import JournalWindow
 from binance_ta.logging_setup import configure_logging
 from binance_ta.screener_window import ScreenerWindow
-from binance_ta.scoring import MIN_ROWS_REQUIRED, compute_score_series, find_signal_crossings
+from binance_ta.scoring import ILLIQUID_ZERO_VOLUME_RATIO, compute_score_series, find_signal_crossings
 from binance_ta.settings import Settings
 from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
@@ -728,7 +728,10 @@ class BinanceApp(tk.Tk):
         self._draw_chart(df, symbol, interval, opts)
 
         last = df.iloc[-1]
-        parts = [f"{symbol} | záróár: {last['close']:.2f}"]
+        parts = []
+        if (df["volume"].tail(20) == 0).mean() > ILLIQUID_ZERO_VOLUME_RATIO:
+            parts.append("⚠ Alacsony likviditású pár - a gyertyák emiatt hiányosnak/laposnak tűnhetnek")
+        parts.append(f"{symbol} | záróár: {last['close']:.2f}")
         if opts["sma"]:
             sma_col = f"sma_{opts['sma_period']}"
             parts.append(f"SMA{opts['sma_period']}: {last[sma_col]:.2f}")

@@ -119,3 +119,24 @@ def test_find_signal_crossings_fires_only_on_the_crossing_candle():
 
     assert list(buy) == [False, False, True, False, False, False, False, False, False]
     assert list(sell) == [False, False, False, False, False, False, True, False, False]
+
+
+def test_compute_score_returns_none_for_mostly_zero_volume_symbol():
+    # tobbnyire lapos, kereskedes nelkuli gyertyak (mint egy nagyon vekony par) -
+    # az utolso 20-bol csak 3-nal van tenyleges forgalom
+    closes = [100.0] * 90
+    volumes = [0.0] * 87 + [50.0, 0.0, 0.0]
+    df = _make_df(closes, volumes=volumes)
+
+    assert compute_score(df) is None
+
+
+def test_score_series_is_nan_where_volume_is_mostly_zero():
+    rng = np.random.default_rng(3)
+    closes = [100.0 + n for n in rng.normal(0, 0.2, size=90)]
+    volumes = [100.0] * 60 + [0.0] * 30  # az utolso 30 gyertyan elapad a forgalom
+    df = _make_df(closes, volumes=volumes)
+
+    series = compute_score_series(df)
+
+    assert series.iloc[-1:].isna().all()
