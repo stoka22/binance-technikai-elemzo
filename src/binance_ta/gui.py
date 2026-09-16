@@ -32,6 +32,7 @@ from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_kli
 from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
 from binance_ta.logging_setup import configure_logging
+from binance_ta.screener_window import ScreenerWindow
 from binance_ta.settings import Settings
 from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
@@ -71,6 +72,7 @@ class SettingsDialog(tk.Toplevel):
         self.interval_var = tk.StringVar(value=settings.default_interval)
         self.limit_var = tk.StringVar(value=str(settings.default_limit))
         self.live_seconds_var = tk.StringVar(value=str(settings.live_refresh_seconds))
+        self.screener_min_score_var = tk.StringVar(value=str(settings.screener_min_score))
 
         frm = ttk.Frame(self, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -95,8 +97,20 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(frm, text="Élő frissítés (mp):").grid(row=6, column=0, sticky="w", pady=2)
         ttk.Entry(frm, textvariable=self.live_seconds_var, width=14).grid(row=6, column=1, sticky="w")
 
+        ttk.Separator(frm).grid(row=7, column=0, columnspan=2, sticky="ew", pady=6)
+
+        ttk.Label(frm, text="Piac-szűrő", font=("Segoe UI", 10, "bold")).grid(
+            row=8, column=0, columnspan=2, sticky="w", pady=(6, 6)
+        )
+        ttk.Label(frm, text="Javasolt küszöb (%):").grid(row=9, column=0, sticky="w", pady=2)
+        ttk.Entry(frm, textvariable=self.screener_min_score_var, width=14).grid(row=9, column=1, sticky="w")
+        ttk.Label(
+            frm, text="Ennyi % fölött 🟢 vétel, (100 - ennyi) % alatt 🔴 zárás jelzés.",
+            foreground="#666666", font=("Segoe UI", 8), wraplength=260, justify="left",
+        ).grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
         btns = ttk.Frame(frm)
-        btns.grid(row=7, column=0, columnspan=2, sticky="e", pady=(16, 0))
+        btns.grid(row=11, column=0, columnspan=2, sticky="e", pady=(16, 0))
         ttk.Button(btns, text="Mégse", command=self.destroy).pack(side=tk.RIGHT, padx=(6, 0))
         ttk.Button(btns, text="💾 Mentés", command=self._save).pack(side=tk.RIGHT)
 
@@ -104,13 +118,19 @@ class SettingsDialog(tk.Toplevel):
         try:
             limit = int(self.limit_var.get())
             live_seconds = int(self.live_seconds_var.get())
+            min_score = int(self.screener_min_score_var.get())
         except ValueError:
             messagebox.showerror(
-                "Hibás bemenet", "A gyertyák száma és az élő frissítés (mp) csak egész szám lehet.", parent=self
+                "Hibás bemenet",
+                "A gyertyák száma, az élő frissítés (mp) és a piac-szűrő küszöb csak egész szám lehet.",
+                parent=self,
             )
             return
         if not (1 <= limit <= 1000):
             messagebox.showerror("Hibás bemenet", "A gyertyák száma 1 és 1000 között lehet.", parent=self)
+            return
+        if not (50 <= min_score <= 100):
+            messagebox.showerror("Hibás bemenet", "A piac-szűrő küszöb 50 és 100 között lehet.", parent=self)
             return
 
         self.settings.show_tooltips = self.tooltips_var.get()
@@ -118,6 +138,7 @@ class SettingsDialog(tk.Toplevel):
         self.settings.default_interval = self.interval_var.get()
         self.settings.default_limit = limit
         self.settings.live_refresh_seconds = max(MIN_LIVE_REFRESH_SECONDS, live_seconds)
+        self.settings.screener_min_score = min_score
         self.settings.save()
 
         self.on_save(self.settings)
@@ -204,6 +225,10 @@ class BinanceApp(tk.Tk):
         file_menu.add_command(label="🚪 Kilépés", command=self._on_close)
         menubar.add_cascade(label="Fájl", menu=file_menu)
 
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        tools_menu.add_command(label="📡 Piac-szűrő...", command=self._open_screener)
+        menubar.add_cascade(label="Eszközök", menu=tools_menu)
+
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="⚙ Beállítások...", command=self._open_settings)
         menubar.add_cascade(label="Beállítások", menu=settings_menu)
@@ -218,6 +243,24 @@ class BinanceApp(tk.Tk):
 
     def _open_settings(self):
         SettingsDialog(self, self.settings, self._on_settings_saved)
+
+    def _open_screener(self):
+        if not self._all_symbol_infos:
+            messagebox.showinfo(
+                "Piac-szűrő", "A szimbólumlista még töltődik, próbáld meg pár másodperc múlva.", parent=self
+            )
+            return
+        ScreenerWindow(
+            self,
+            symbols=self._all_symbol_infos,
+            min_score=self.settings.screener_min_score,
+            interval=self.interval_var.get(),
+            on_select=self._on_screener_symbol_selected,
+        )
+
+    def _on_screener_symbol_selected(self, symbol: str):
+        self.symbol_var.set(symbol)
+        self.on_fetch(manual=True)
 
     def _on_settings_saved(self, settings: Settings):
         self.settings = settings

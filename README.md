@@ -15,6 +15,10 @@ frissítéssel.
 - Kereshető szimbólum-választó ablak (🔍), "BASE/QUOTE" formázással és csillagozható kedvencekkel
 - ⭐ Watchlist oldalsáv: az összes kedvenc ára és 24 órás %-os változása egyszerre látszik,
   kb. 15 mp-enként frissülve - kattintással betölthető a chartra
+- 📡 Piac-szűrő (Eszközök menü): technikai pontszázalékot (RSI+MACD+trend+Bollinger,
+  volumennel súlyozva) számol az összes (vagy quote eszköz szerint szűrt) szimbólumra,
+  és a Beállításokban megadott küszöb fölött/alatt 🟢/🔴 jelzést ad - **ez egy technikai
+  szűrő, nem befektetési tanács**, a UI is jelzi
 - A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
@@ -28,6 +32,9 @@ src/binance_ta/
     indicators.py       SMA / RSI / MACD / Bollinger számítás (pandas)
     gui.py              Tkinter GUI + candlestick chart (mplfinance)
     symbol_picker.py    Kereshető szimbólum-választó ablak (kedvencekkel)
+    scoring.py           Folytonos technikai pontszám (-100%..+100%) egy dataframere
+    screener.py           Piac-szintű szken korlátozott párhuzamossággal
+    screener_window.py     Piac-szűrő ablak (eredménytábla, küszöb szerinti jelzés)
     settings.py         Felhasználói beállítások (JSON perzisztencia)
     tooltip.py          Újrahasznosítható hover-tooltip widget
     indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz

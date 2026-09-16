@@ -21,6 +21,7 @@ class Settings:
     default_limit: int = 300
     live_refresh_seconds: int = 30
     favorite_symbols: list[str] = field(default_factory=list)
+    screener_min_score: int = 90  # ennyi % fölött "javasolt vétel", ennyi % alatt (100-ennyi) "javasolt zárás"
 
     @classmethod
     def load(cls, path: Path = SETTINGS_FILE) -> "Settings":
