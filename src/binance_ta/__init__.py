@@ -2,6 +2,7 @@
 
 from binance_ta.client import BinanceAPIError, fetch_klines, get_exchange_symbols
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
+from binance_ta.settings import Settings
 
 __all__ = [
     "BinanceAPIError",
@@ -11,4 +12,5 @@ __all__ = [
     "add_rsi",
     "add_macd",
     "add_bollinger_bands",
+    "Settings",
 ]
