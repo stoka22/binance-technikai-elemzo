@@ -1,7 +1,8 @@
 """Grafikus (Tkinter) Windows alkalmazás: Binance árfolyam lekérése,
 gyertya (candlestick) chart, SMA / Bollinger / RSI / MACD indikátorok,
 élő (automatikus) frissítés, egérrel követhető kereszt (crosshair),
-sötét/világos téma, felugró súgó buborékok és beállítások-ablak.
+felugró súgó buborékok és beállítások-ablak. A felület a rendszer
+alapértelmezett (natív) ttk megjelenítését használja.
 
 Indítás:
     python -m binance_ta.gui
@@ -39,22 +40,14 @@ logger = logging.getLogger(__name__)
 INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
 MIN_LIVE_REFRESH_SECONDS = 5
 APP_TITLE = "📈 Binance Technikai Elemző"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
-# Binance márkaszín (a valódi tőzsde felületén is ez a kiemelő szín).
-ACCENT_COLOR = "#F0B90B"
-ACCENT_TEXT = "#000000"
-
-THEME_COLORS = {
-    "light": {
-        "bg": "#ffffff", "fg": "#1e2329", "field_bg": "#f5f5f5", "border": "#e0e0e0",
-        "mpf_style": "binance", "crosshair_bg": "#ffffe0", "crosshair_fg": "#000000",
-    },
-    "dark": {
-        "bg": "#0b0e11", "fg": "#eaecef", "field_bg": "#1e2329", "border": "#2b3139",
-        "mpf_style": "binancedark", "crosshair_bg": "#1e2329", "crosshair_fg": "#eaecef",
-    },
-}
+# A chart mindig ezt az (egységesen világos, Binance-stílusú) chart-témát
+# használja - a felhasználó a rendszer natív felületét kérte, egyedi
+# sötét/világos app-témát nem kínálunk fel.
+MPF_STYLE = "binance"
+CROSSHAIR_BG = "#ffffe0"
+CROSSHAIR_FG = "#000000"
 
 
 class SettingsDialog(tk.Toplevel):
@@ -70,7 +63,6 @@ class SettingsDialog(tk.Toplevel):
         self.settings = settings
         self.on_save = on_save
 
-        self.theme_var = tk.StringVar(value=settings.theme)
         self.tooltips_var = tk.BooleanVar(value=settings.show_tooltips)
         self.symbol_var = tk.StringVar(value=settings.default_symbol)
         self.interval_var = tk.StringVar(value=settings.default_interval)
@@ -80,39 +72,30 @@ class SettingsDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frm, text="Megjelenés", font=("Segoe UI", 10, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 6)
-        )
-        ttk.Radiobutton(frm, text="☀ Világos téma", value="light", variable=self.theme_var).grid(
-            row=1, column=0, columnspan=2, sticky="w"
-        )
-        ttk.Radiobutton(frm, text="🌙 Sötét téma", value="dark", variable=self.theme_var).grid(
-            row=2, column=0, columnspan=2, sticky="w"
-        )
         ttk.Checkbutton(
             frm, text="ℹ Felugró súgó buborékok (tooltip) mutatása", variable=self.tooltips_var
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 12))
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
-        ttk.Separator(frm).grid(row=4, column=0, columnspan=2, sticky="ew", pady=6)
+        ttk.Separator(frm).grid(row=1, column=0, columnspan=2, sticky="ew", pady=6)
 
         ttk.Label(frm, text="Alapértelmezett értékek", font=("Segoe UI", 10, "bold")).grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=(6, 6)
+            row=2, column=0, columnspan=2, sticky="w", pady=(6, 6)
         )
-        ttk.Label(frm, text="Szimbólum:").grid(row=6, column=0, sticky="w", pady=2)
-        ttk.Entry(frm, textvariable=self.symbol_var, width=14).grid(row=6, column=1, sticky="w")
-        ttk.Label(frm, text="Időtáv:").grid(row=7, column=0, sticky="w", pady=2)
+        ttk.Label(frm, text="Szimbólum:").grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Entry(frm, textvariable=self.symbol_var, width=14).grid(row=3, column=1, sticky="w")
+        ttk.Label(frm, text="Időtáv:").grid(row=4, column=0, sticky="w", pady=2)
         ttk.Combobox(
             frm, textvariable=self.interval_var, values=INTERVALS, width=11, state="readonly"
-        ).grid(row=7, column=1, sticky="w")
-        ttk.Label(frm, text="Gyertyák száma:").grid(row=8, column=0, sticky="w", pady=2)
-        ttk.Entry(frm, textvariable=self.limit_var, width=14).grid(row=8, column=1, sticky="w")
-        ttk.Label(frm, text="Élő frissítés (mp):").grid(row=9, column=0, sticky="w", pady=2)
-        ttk.Entry(frm, textvariable=self.live_seconds_var, width=14).grid(row=9, column=1, sticky="w")
+        ).grid(row=4, column=1, sticky="w")
+        ttk.Label(frm, text="Gyertyák száma:").grid(row=5, column=0, sticky="w", pady=2)
+        ttk.Entry(frm, textvariable=self.limit_var, width=14).grid(row=5, column=1, sticky="w")
+        ttk.Label(frm, text="Élő frissítés (mp):").grid(row=6, column=0, sticky="w", pady=2)
+        ttk.Entry(frm, textvariable=self.live_seconds_var, width=14).grid(row=6, column=1, sticky="w")
 
         btns = ttk.Frame(frm)
-        btns.grid(row=10, column=0, columnspan=2, sticky="e", pady=(16, 0))
+        btns.grid(row=7, column=0, columnspan=2, sticky="e", pady=(16, 0))
         ttk.Button(btns, text="Mégse", command=self.destroy).pack(side=tk.RIGHT, padx=(6, 0))
-        ttk.Button(btns, text="💾 Mentés", style="Accent.TButton", command=self._save).pack(side=tk.RIGHT)
+        ttk.Button(btns, text="💾 Mentés", command=self._save).pack(side=tk.RIGHT)
 
     def _save(self):
         try:
@@ -127,7 +110,6 @@ class SettingsDialog(tk.Toplevel):
             messagebox.showerror("Hibás bemenet", "A gyertyák száma 1 és 1000 között lehet.", parent=self)
             return
 
-        self.settings.theme = self.theme_var.get()
         self.settings.show_tooltips = self.tooltips_var.get()
         self.settings.default_symbol = self.symbol_var.get().strip().upper() or self.settings.default_symbol
         self.settings.default_interval = self.interval_var.get()
@@ -152,60 +134,15 @@ class BinanceApp(tk.Tk):
         self._all_symbols: list[str] = []
         self._live_after_id: str | None = None
         self._tooltips: list[ToolTip] = []
-        self._last_fetch = None
         self.canvas = None
         self.toolbar = None
 
-        self._apply_theme()
         self._build_menu()
         self._build_controls()
         self._build_chart_area()
         self._build_statusbar()
 
         self._load_symbols_async()
-
-    # ---------- Téma ----------
-
-    def _apply_theme(self):
-        colors = THEME_COLORS[self.settings.theme]
-        self._mpf_style = colors["mpf_style"]
-        self._crosshair_bg = colors["crosshair_bg"]
-        self._crosshair_fg = colors["crosshair_fg"]
-
-        bg, fg, field_bg, border = colors["bg"], colors["fg"], colors["field_bg"], colors["border"]
-
-        style = ttk.Style(self)
-        style.theme_use("clam")
-
-        self.configure(bg=bg)
-        style.configure(".", background=bg, foreground=fg, fieldbackground=field_bg, bordercolor=border)
-        for name in ("TFrame", "TLabel", "TCheckbutton", "TRadiobutton", "TLabelframe", "TLabelframe.Label"):
-            style.configure(name, background=bg, foreground=fg)
-
-        style.configure("TButton", background=field_bg, foreground=fg, padding=4)
-        style.map("TButton", background=[("active", border)])
-        style.configure("Accent.TButton", background=ACCENT_COLOR, foreground=ACCENT_TEXT, font=("Segoe UI", 9, "bold"), padding=5)
-        style.map("Accent.TButton", background=[("active", ACCENT_COLOR)])
-
-        style.configure("TEntry", fieldbackground=field_bg, foreground=fg, insertcolor=fg)
-        style.configure("TCombobox", fieldbackground=field_bg, foreground=fg)
-        style.map("TCombobox", fieldbackground=[("readonly", field_bg)], foreground=[("readonly", fg)])
-        style.configure("TSeparator", background=border)
-
-        self.option_add("*TCombobox*Listbox.background", field_bg)
-        self.option_add("*TCombobox*Listbox.foreground", fg)
-        self.option_add("*TCombobox*Listbox.selectBackground", ACCENT_COLOR)
-        self.option_add("*TCombobox*Listbox.selectForeground", ACCENT_TEXT)
-
-    def _toggle_theme_from_menu(self):
-        self.settings.theme = "dark" if self.dark_theme_var.get() else "light"
-        self.settings.save()
-        self._apply_theme()
-        self._redraw_if_possible()
-
-    def _redraw_if_possible(self):
-        if self._last_fetch is not None:
-            self._draw_chart(*self._last_fetch)
 
     # ---------- Menüsor ----------
 
@@ -215,13 +152,6 @@ class BinanceApp(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="🚪 Kilépés", command=self._on_close)
         menubar.add_cascade(label="Fájl", menu=file_menu)
-
-        self.dark_theme_var = tk.BooleanVar(value=(self.settings.theme == "dark"))
-        view_menu = tk.Menu(menubar, tearoff=0)
-        view_menu.add_checkbutton(
-            label="🌙 Sötét téma", variable=self.dark_theme_var, command=self._toggle_theme_from_menu
-        )
-        menubar.add_cascade(label="Nézet", menu=view_menu)
 
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="⚙ Beállítások...", command=self._open_settings)
@@ -240,9 +170,6 @@ class BinanceApp(tk.Tk):
 
     def _on_settings_saved(self, settings: Settings):
         self.settings = settings
-        self.dark_theme_var.set(settings.theme == "dark")
-        self._apply_theme()
-        self._redraw_if_possible()
         self.status_var.set("Beállítások elmentve.")
 
     def _show_indicator_info(self, key: str):
@@ -296,7 +223,7 @@ class BinanceApp(tk.Tk):
         self._tooltip(limit_entry, "Hány gyertyát töltsön be (1-1000).")
 
         self.fetch_button = ttk.Button(
-            row1, text="🔄 Lekérés és rajzolás", style="Accent.TButton", command=lambda: self.on_fetch(manual=True)
+            row1, text="🔄 Lekérés és rajzolás", command=lambda: self.on_fetch(manual=True)
         )
         self.fetch_button.pack(side=tk.LEFT, padx=(12, 0))
         self._tooltip(self.fetch_button, "Adatok lekérése a Binance API-ról és a chart újrarajzolása.")
@@ -465,7 +392,6 @@ class BinanceApp(tk.Tk):
 
     def _on_fetch_success(self, df, symbol, interval, opts):
         self.fetch_button.state(["!disabled"])
-        self._last_fetch = (df, symbol, interval, opts)
         self._draw_chart(df, symbol, interval, opts)
 
         last = df.iloc[-1]
@@ -557,7 +483,7 @@ class BinanceApp(tk.Tk):
         fig, axlist = mpf.plot(
             ohlc,
             type="candle",
-            style=self._mpf_style,
+            style=MPF_STYLE,
             addplot=addplots or None,
             volume=opts["volume"],
             returnfig=True,
@@ -596,8 +522,8 @@ class BinanceApp(tk.Tk):
         hline = ax.axhline(color="gray", lw=0.6, ls=":", visible=False)
         annot = ax.annotate(
             "", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-            bbox=dict(boxstyle="round", fc=self._crosshair_bg, ec=self._crosshair_fg, alpha=0.9),
-            fontsize=8, color=self._crosshair_fg,
+            bbox=dict(boxstyle="round", fc=CROSSHAIR_BG, ec=CROSSHAIR_FG, alpha=0.9),
+            fontsize=8, color=CROSSHAIR_FG,
         )
         annot.set_visible(False)
         n = len(df)

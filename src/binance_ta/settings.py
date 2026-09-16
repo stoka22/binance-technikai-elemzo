@@ -1,5 +1,5 @@
 """Felhasználói beállítások: betöltés/mentés JSON fájlba, hogy a
-preferenciák (téma, tooltipek, alapértelmezett szimbólum stb.) megmaradjanak
+preferenciák (tooltipek, alapértelmezett szimbólum stb.) megmaradjanak
 az alkalmazás újraindítása után is."""
 
 import json
@@ -15,7 +15,6 @@ SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 
 @dataclass
 class Settings:
-    theme: str = "light"  # "light" | "dark"
     show_tooltips: bool = True
     default_symbol: str = "BTCUSDT"
     default_interval: str = "1h"

@@ -7,12 +7,13 @@ frissítéssel.
 
 ## Funkciók
 
-- Candlestick chart (mplfinance), Binance márkaszínekkel (`binance` / `binancedark` stílus)
+- Candlestick chart (mplfinance), Binance márkaszínekkel (`binance` stílus)
 - SMA, Bollinger szalagok, RSI, MACD, volumen - egyenként ki/be kapcsolható panelek
 - Élő (automatikus) frissítés testreszabható időközzel
 - Egérrel követhető kereszt (crosshair) OHLC tooltippel a charton
+- Görgővel nagyítás/kicsinyítés (arányos ár-skálával), jobb gombos húzással mozgatás
 - Szimbólum-autocomplete a Binance kereskedhető párjai alapján
-- Sötét / világos téma (Nézet menü vagy Beállítások)
+- A rendszer natív felülete (nincs egyedi app-téma) - konzisztens a többi Windows programmal
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)
