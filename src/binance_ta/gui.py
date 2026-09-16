@@ -32,11 +32,14 @@ from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_kli
 from binance_ta.currency_symbols import format_pair_glyph
 from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
+from binance_ta.journal_window import JournalWindow
 from binance_ta.logging_setup import configure_logging
 from binance_ta.screener_window import ScreenerWindow
 from binance_ta.settings import Settings
 from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
+from binance_ta.trade_journal import TradeJournal
+from binance_ta.trade_rules import RULEBOOK, evaluate_trade
 from binance_ta.win_theme import enable_dark_titlebar, prefers_dark
 
 logger = logging.getLogger(__name__)
@@ -170,6 +173,8 @@ class BinanceApp(tk.Tk):
         self._chart_interval: str | None = None
         self._chart_df: pd.DataFrame | None = None
 
+        self.trade_journal = TradeJournal()
+
         self._apply_system_theme()
         self._build_menu()
         self._build_controls()
@@ -231,6 +236,7 @@ class BinanceApp(tk.Tk):
 
         tools_menu = tk.Menu(menubar, tearoff=0)
         tools_menu.add_command(label="📡 Piac-szűrő...", command=self._open_screener)
+        tools_menu.add_command(label="📒 Kereskedési napló...", command=self._open_journal)
         menubar.add_cascade(label="Eszközök", menu=tools_menu)
 
         settings_menu = tk.Menu(menubar, tearoff=0)
@@ -239,6 +245,7 @@ class BinanceApp(tk.Tk):
 
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="ℹ Indikátorok magyarázata", command=self._show_all_indicator_info)
+        help_menu.add_command(label="📖 Kereskedési alapszabályok", command=self._show_trade_rulebook)
         help_menu.add_separator()
         help_menu.add_command(label="Névjegy", command=self._show_about)
         menubar.add_cascade(label="Súgó", menu=help_menu)
@@ -265,6 +272,13 @@ class BinanceApp(tk.Tk):
     def _on_screener_symbol_selected(self, symbol: str):
         self.symbol_var.set(symbol)
         self.on_fetch(manual=True)
+
+    def _open_journal(self):
+        JournalWindow(self, self.trade_journal, fetch_klines, self._show_trade_rulebook)
+
+    def _show_trade_rulebook(self):
+        text = "\n\n".join(RULEBOOK.values())
+        messagebox.showinfo("📖 Kereskedési alapszabályok", text, parent=self)
 
     def _on_settings_saved(self, settings: Settings):
         self.settings = settings
@@ -358,6 +372,40 @@ class BinanceApp(tk.Tk):
 
         self.volume_enabled = tk.BooleanVar(value=True)
         self._add_indicator_cell(indicators, 4, "▮ Volumen", self.volume_enabled, None, "Volumen")
+
+        self._build_practice_panel(bar)
+
+    def _build_practice_panel(self, parent):
+        practice = ttk.LabelFrame(parent, text="🎯 Gyakorlás")
+        practice.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+
+        row = ttk.Frame(practice, padding=(8, 4))
+        row.pack(side=tk.TOP, fill=tk.X)
+
+        self.practice_mode_var = tk.BooleanVar(value=False)
+        practice_check = ttk.Checkbutton(
+            row, text="Gyakorlás mód", variable=self.practice_mode_var, command=self._on_practice_mode_toggle
+        )
+        practice_check.pack(side=tk.LEFT)
+        self._tooltip(
+            practice_check,
+            "Bekapcsolva: kattints egy gyertyára a charton a belépéshez,\n"
+            "majd egy másikra a záráshoz - a gyakorló ügylet rögzítésre kerül\n"
+            "a Kereskedési naplóban (Eszközök menü).",
+        )
+
+        self.trade_direction_var = tk.StringVar(value="long")
+        ttk.Radiobutton(row, text="📈 Long", value="long", variable=self.trade_direction_var).pack(
+            side=tk.LEFT, padx=(12, 0)
+        )
+        ttk.Radiobutton(row, text="📉 Short", value="short", variable=self.trade_direction_var).pack(
+            side=tk.LEFT, padx=(4, 0)
+        )
+
+        self.practice_status_var = tk.StringVar(value="Nincs nyitott gyakorló pozíció.")
+        ttk.Label(row, textvariable=self.practice_status_var, foreground="#888888").pack(side=tk.LEFT, padx=(16, 0))
+
+        ttk.Button(row, text="📒 Napló", command=self._open_journal).pack(side=tk.RIGHT)
 
     def _add_indicator_cell(self, parent, column, label, enabled_var, period_var, info_key):
         cell = ttk.Frame(parent, padding=(8, 4))
@@ -809,6 +857,8 @@ class BinanceApp(tk.Tk):
         self._attach_crosshair(axlist[0], df)
         self._attach_scroll_zoom(axlist[0], df)
         self._attach_pan(axlist[0], df)
+        self._attach_trade_clicks(axlist[0], df, symbol, interval)
+        self._draw_trade_markers(axlist[0], df)
         self._tooltip(
             canvas.get_tk_widget(),
             "Görgesd az egeret a nagyításhoz/kicsinyítéshez (a kurzor pozíciója körül,\n"
@@ -978,6 +1028,104 @@ class BinanceApp(tk.Tk):
         ax.figure.canvas.mpl_connect("button_press_event", on_press)
         ax.figure.canvas.mpl_connect("button_release_event", on_release)
         ax.figure.canvas.mpl_connect("motion_notify_event", on_motion)
+
+    # ---------- Gyakorlás mód (kereskedési napló) ----------
+
+    def _on_practice_mode_toggle(self):
+        if not self.practice_mode_var.get():
+            self.practice_status_var.set("Nincs nyitott gyakorló pozíció.")
+            return
+        open_trade = self.trade_journal.open_trade_for(self._chart_symbol) if self._chart_symbol else None
+        if open_trade:
+            self.practice_status_var.set(
+                f"Nyitva: {'Long' if open_trade.direction == 'long' else 'Short'} @ {open_trade.entry_price:g}"
+            )
+        else:
+            self.practice_status_var.set("Kattints egy gyertyára a belépéshez.")
+
+    def _attach_trade_clicks(self, ax, df: pd.DataFrame, symbol: str, interval: str):
+        n = len(df)
+
+        def on_click(event):
+            if not self.practice_mode_var.get():
+                return
+            if event.button != 1 or event.inaxes != ax or event.xdata is None:
+                return
+            x = int(round(event.xdata))
+            if x < 0 or x >= n:
+                return
+            self._on_trade_chart_click(symbol, interval, df, df.iloc[x])
+
+        ax.figure.canvas.mpl_connect("button_press_event", on_click)
+
+    def _on_trade_chart_click(self, symbol: str, interval: str, df: pd.DataFrame, row: pd.Series):
+        price = float(row["close"])
+        time_str = row["open_time"].isoformat()
+        open_trade = self.trade_journal.open_trade_for(symbol)
+
+        if open_trade is None:
+            direction = self.trade_direction_var.get()
+            self.trade_journal.open_trade(symbol, interval, direction, time_str, price)
+            label = "Long" if direction == "long" else "Short"
+            self.practice_status_var.set(f"Nyitva: {label} @ {price:g} ({row['open_time']:%m-%d %H:%M})")
+        else:
+            self.trade_journal.close_trade(open_trade, time_str, price)
+            pnl = open_trade.pnl_percent
+            violations = evaluate_trade(df, open_trade)
+            icon = "✅" if pnl >= 0 else "❌"
+            self.practice_status_var.set(f"{icon} Lezárva: {pnl:+.2f}%  |  Nincs nyitott gyakorló pozíció.")
+
+            label = "Long" if open_trade.direction == "long" else "Short"
+            if violations:
+                issues_text = "\n".join(f"• {v.message}" for v in violations)
+            else:
+                issues_text = "Nem találtunk szabálysértést ennél az ügyletnél."
+            messagebox.showinfo(
+                f"{icon} Ügylet lezárva: {pnl:+.2f}%",
+                f"{symbol} · {label}\n\nBelépés: {open_trade.entry_price:g}\nKilépés: {price:g}\n\n{issues_text}",
+                parent=self,
+            )
+
+        # Teljes újrarajzolás (nem csak a jelölők hozzáadása a meglévő tengelyre),
+        # mert ismételt kattintásoknál a korábbi jelölők felhalmozódtak volna a
+        # perzisztens Axes-en. A nézet (zoom/pozíció) emiatt is megmarad, mivel
+        # ugyanaz a szimbólum/időtáv.
+        self._draw_chart(df, symbol, interval, self._gather_options())
+
+    def _draw_trade_markers(self, ax, df: pd.DataFrame):
+        """A jelenlegi szimbólumhoz tartozó nyitott (vagy legutóbb lezárt)
+        gyakorló ügylet belépési/kilépési pontját jelöli a charton."""
+        symbol = self._chart_symbol
+        if symbol is None:
+            return
+
+        trade = self.trade_journal.open_trade_for(symbol)
+        if trade is None:
+            closed = [t for t in reversed(self.trade_journal.trades) if t.symbol == symbol and not t.is_open]
+            trade = closed[0] if closed else None
+        if trade is None:
+            return
+
+        n = len(df)
+        times = df["open_time"]
+
+        entry_idx = min(max(int(times.searchsorted(pd.Timestamp(trade.entry_time))), 0), n - 1)
+        entry_color = "#0ecb81" if trade.direction == "long" else "#f6465d"
+        ax.axvline(entry_idx, color=entry_color, linestyle="--", linewidth=1.2, alpha=0.8)
+        ax.annotate(
+            "BE", xy=(entry_idx, df["low"].iloc[entry_idx]), xytext=(0, -16), textcoords="offset points",
+            ha="center", fontsize=8, color=entry_color, fontweight="bold",
+        )
+
+        if trade.exit_time is not None:
+            exit_idx = min(max(int(times.searchsorted(pd.Timestamp(trade.exit_time))), 0), n - 1)
+            pnl = trade.pnl_percent
+            exit_color = "#0ecb81" if pnl >= 0 else "#f6465d"
+            ax.axvline(exit_idx, color=exit_color, linestyle="--", linewidth=1.2, alpha=0.8)
+            ax.annotate(
+                f"KI {pnl:+.1f}%", xy=(exit_idx, df["high"].iloc[exit_idx]), xytext=(0, 10), textcoords="offset points",
+                ha="center", fontsize=8, color=exit_color, fontweight="bold",
+            )
 
 
 def main() -> None:

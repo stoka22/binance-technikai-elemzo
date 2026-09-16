@@ -25,6 +25,13 @@ frissítéssel.
   és a Beállításokban megadott küszöb fölött/alatt 🟢/🔴 jelzést ad - **ez egy technikai
   szűrő, nem befektetési tanács**, a UI is jelzi
 - A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
+- 🎯 Gyakorlás mód: kattints egy gyertyára a belépéshez, egy másikra a záráshoz -
+  a szimulált (Long/Short) ügylet rögzítésre kerül a 📒 Kereskedési naplóban.
+  Minden lezárt ügyletet automatikusan összevetünk pár klasszikus alapszabállyal
+  (ne kereskedj a trend ellen, ne lépj be túlvett/túladott állapotban, vágd rövidre
+  a veszteséget, hagyd futni a nyereséget), a napló-ablak pedig kimutatja a nyerő
+  arányt, a profit faktort és a leggyakoribb hibákat - ez segít saját, automata
+  szűrő-szabályokat (pl. a Piac-szűrőben) felállítani
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)
@@ -41,6 +48,9 @@ src/binance_ta/
     scoring.py           Folytonos technikai pontszám (-100%..+100%) egy dataframere
     screener.py           Piac-szintű szken korlátozott párhuzamossággal
     screener_window.py     Piac-szűrő ablak (eredménytábla, küszöb szerinti jelzés)
+    trade_journal.py     Gyakorló ügyletek (Trade, TradeJournal) - JSON perzisztencia
+    trade_rules.py         Klasszikus alapszabályok + ügylet-kiértékelés
+    journal_window.py        Kereskedési napló ablak (statisztika, hibalista)
     settings.py         Felhasználói beállítások (JSON perzisztencia)
     tooltip.py          Újrahasznosítható hover-tooltip widget
     indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz
@@ -85,3 +95,4 @@ Az eredmény: `dist\BinanceTA.exe`.
 
 - Napló: `%USERPROFILE%\.binance_ta\binance_ta.log` (forgatva, max. 3×1 MB)
 - Beállítások: `%USERPROFILE%\.binance_ta\settings.json`
+- Gyakorló ügyletek: `%USERPROFILE%\.binance_ta\trades.json`
