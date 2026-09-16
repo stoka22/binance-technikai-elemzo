@@ -10,6 +10,7 @@ Robusztussági szempontok:
 """
 
 import logging
+from dataclasses import dataclass
 
 import pandas as pd
 import requests
@@ -52,7 +53,21 @@ def _build_session() -> requests.Session:
 
 
 _session = _build_session()
-_symbols_cache: list[str] | None = None
+_symbol_info_cache: list["SymbolInfo"] | None = None
+
+
+@dataclass(frozen=True)
+class SymbolInfo:
+    """Egy kereskedhető pár a Binance-en, a base/quote eszközökre bontva."""
+
+    symbol: str
+    base_asset: str
+    quote_asset: str
+
+    @property
+    def display(self) -> str:
+        """Olvasható forma, pl. "BTC/USDT" - ezt mutatjuk a szimbólum-választóban."""
+        return f"{self.base_asset}/{self.quote_asset}"
 
 
 def fetch_klines(symbol: str, interval: str, limit: int = 500) -> pd.DataFrame:
@@ -85,15 +100,15 @@ def fetch_klines(symbol: str, interval: str, limit: int = 500) -> pd.DataFrame:
     return df[["open_time", "open", "high", "low", "close", "volume", "close_time"]]
 
 
-def get_exchange_symbols(force_refresh: bool = False) -> list[str]:
-    """A Binance-en jelenleg kereskedhető (TRADING státuszú) szimbólumok listája.
+def get_tradable_symbols(force_refresh: bool = False) -> list[SymbolInfo]:
+    """A Binance-en jelenleg kereskedhető (TRADING státuszú) párok, base/quote bontással.
 
     Az eredményt memóriában gyorsítótárazza, mert ez a lista ritkán változik,
     így nem kell minden GUI-indításkor/kereséskor újra lekérni.
     """
-    global _symbols_cache
-    if _symbols_cache is not None and not force_refresh:
-        return _symbols_cache
+    global _symbol_info_cache
+    if _symbol_info_cache is not None and not force_refresh:
+        return _symbol_info_cache
 
     logger.info("Szimbólumlista lekérése a Binance-ről...")
     try:
@@ -104,9 +119,19 @@ def get_exchange_symbols(force_refresh: bool = False) -> list[str]:
         raise BinanceAPIError(f"Nem sikerült lekérni a szimbólumlistát: {exc}") from exc
 
     data = response.json()
-    symbols = sorted(
-        entry["symbol"] for entry in data.get("symbols", []) if entry.get("status") == "TRADING"
+    infos = sorted(
+        (
+            SymbolInfo(entry["symbol"], entry["baseAsset"], entry["quoteAsset"])
+            for entry in data.get("symbols", [])
+            if entry.get("status") == "TRADING"
+        ),
+        key=lambda info: info.symbol,
     )
-    _symbols_cache = symbols
-    logger.debug("Szimbólumlista betöltve: %s elem", len(symbols))
-    return symbols
+    _symbol_info_cache = infos
+    logger.debug("Szimbólumlista betöltve: %s elem", len(infos))
+    return infos
+
+
+def get_exchange_symbols(force_refresh: bool = False) -> list[str]:
+    """A kereskedhető szimbólumok neve egyszerű listaként (pl. validációhoz)."""
+    return [info.symbol for info in get_tradable_symbols(force_refresh)]

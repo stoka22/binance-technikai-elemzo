@@ -4,7 +4,7 @@ az alkalmazás újraindítása után is."""
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ class Settings:
     default_interval: str = "1h"
     default_limit: int = 300
     live_refresh_seconds: int = 30
+    favorite_symbols: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path = SETTINGS_FILE) -> "Settings":

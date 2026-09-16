@@ -27,9 +27,9 @@ def _sample_kline_row(open_time_ms: int) -> list:
 
 @pytest.fixture(autouse=True)
 def _reset_symbol_cache():
-    client._symbols_cache = None
+    client._symbol_info_cache = None
     yield
-    client._symbols_cache = None
+    client._symbol_info_cache = None
 
 
 def test_fetch_klines_parses_dataframe(monkeypatch):
@@ -63,9 +63,9 @@ def test_fetch_klines_raises_binance_error_on_http_failure(monkeypatch):
 def test_get_exchange_symbols_filters_trading_and_caches(monkeypatch):
     payload = {
         "symbols": [
-            {"symbol": "BTCUSDT", "status": "TRADING"},
-            {"symbol": "OLDCOIN", "status": "BREAK"},
-            {"symbol": "ETHUSDT", "status": "TRADING"},
+            {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC", "quoteAsset": "USDT"},
+            {"symbol": "OLDCOIN", "status": "BREAK", "baseAsset": "OLD", "quoteAsset": "COIN"},
+            {"symbol": "ETHUSDT", "status": "TRADING", "baseAsset": "ETH", "quoteAsset": "USDT"},
         ]
     }
     call_count = {"n": 0}
@@ -82,3 +82,21 @@ def test_get_exchange_symbols_filters_trading_and_caches(monkeypatch):
     # második hívás gyorsítótárból jön, nincs újabb HTTP kérés
     client.get_exchange_symbols()
     assert call_count["n"] == 1
+
+
+def test_get_tradable_symbols_exposes_base_quote_display(monkeypatch):
+    payload = {
+        "symbols": [
+            {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC", "quoteAsset": "USDT"},
+        ]
+    }
+
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(client._session, "get", fake_get)
+
+    infos = client.get_tradable_symbols()
+    assert len(infos) == 1
+    assert infos[0].symbol == "BTCUSDT"
+    assert infos[0].display == "BTC/USDT"

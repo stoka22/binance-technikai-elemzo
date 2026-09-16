@@ -12,8 +12,8 @@ frissítéssel.
 - Élő (automatikus) frissítés testreszabható időközzel
 - Egérrel követhető kereszt (crosshair) OHLC tooltippel a charton
 - Görgővel nagyítás/kicsinyítés (arányos ár-skálával), jobb gombos húzással mozgatás
-- Szimbólum-autocomplete a Binance kereskedhető párjai alapján
-- A rendszer natív felülete (nincs egyedi app-téma) - konzisztens a többi Windows programmal
+- Kereshető szimbólum-választó ablak (🔍), "BASE/QUOTE" formázással és csillagozható kedvencekkel
+- A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)
@@ -22,14 +22,16 @@ frissítéssel.
 
 ```
 src/binance_ta/
-    client.py            Binance REST API kliens (retry/backoff, logging)
-    indicators.py         SMA / RSI / MACD / Bollinger számítás (pandas)
-    gui.py                 Tkinter GUI + candlestick chart (mplfinance)
-    settings.py            Felhasználói beállítások (JSON perzisztencia)
-    tooltip.py              Újrahasznosítható hover-tooltip widget
-    indicator_info.py       Indikátor-leírások a Súgó menühöz / info gombokhoz
-    logging_setup.py       Fájlba forgatott + konzol logging
-tests/                     pytest unit tesztek (indikátorok, API kliens, beállítások)
+    client.py           Binance REST API kliens (retry/backoff, logging)
+    indicators.py       SMA / RSI / MACD / Bollinger számítás (pandas)
+    gui.py              Tkinter GUI + candlestick chart (mplfinance)
+    symbol_picker.py    Kereshető szimbólum-választó ablak (kedvencekkel)
+    settings.py         Felhasználói beállítások (JSON perzisztencia)
+    tooltip.py          Újrahasznosítható hover-tooltip widget
+    indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz
+    win_theme.py         Windows sötét/világos mód érzékelése + sötét címsor
+    logging_setup.py     Fájlba forgatott + konzol logging
+tests/                  pytest unit tesztek (indikátorok, API kliens, beállítások)
 scripts/build_exe.ps1     Önálló .exe csomagolás PyInstaller-rel
 ```
 

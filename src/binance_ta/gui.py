@@ -28,11 +28,12 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from binance_ta.client import BinanceAPIError, fetch_klines, get_exchange_symbols
+from binance_ta.client import BinanceAPIError, SymbolInfo, fetch_klines, get_tradable_symbols
 from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
 from binance_ta.logging_setup import configure_logging
 from binance_ta.settings import Settings
+from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
 from binance_ta.win_theme import enable_dark_titlebar, prefers_dark
 
@@ -132,7 +133,8 @@ class BinanceApp(tk.Tk):
         self.minsize(880, 650)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self._all_symbols: list[str] = []
+        self._all_symbols: set[str] = set()
+        self._all_symbol_infos: list[SymbolInfo] = []
         self._live_after_id: str | None = None
         self._tooltips: list[ToolTip] = []
         self.canvas = None
@@ -249,10 +251,13 @@ class BinanceApp(tk.Tk):
 
         ttk.Label(row1, text="Szimbólum:").pack(side=tk.LEFT, padx=(0, 4))
         self.symbol_var = tk.StringVar(value=self.settings.default_symbol)
-        self.symbol_combo = ttk.Combobox(row1, textvariable=self.symbol_var, width=12)
-        self.symbol_combo.pack(side=tk.LEFT, padx=(0, 12))
-        self.symbol_combo.bind("<KeyRelease>", self._on_symbol_keyrelease)
-        self._tooltip(self.symbol_combo, "Kereskedési pár a Binance-en, pl. BTCUSDT, ETHUSDT.\nGépeléskor szűkíti a legördülő listát.")
+        symbol_entry = ttk.Entry(row1, textvariable=self.symbol_var, width=12)
+        symbol_entry.pack(side=tk.LEFT, padx=(0, 2))
+        self._tooltip(symbol_entry, "Kereskedési pár a Binance-en, pl. BTCUSDT, ETHUSDT.\nVagy nyisd meg a 🔍 szimbólum-választót.")
+
+        picker_btn = ttk.Button(row1, text="🔍", width=3, command=self._open_symbol_picker)
+        picker_btn.pack(side=tk.LEFT, padx=(0, 12))
+        self._tooltip(picker_btn, "Kereshető szimbólum-választó megnyitása, kedvencekkel (⭐).")
 
         ttk.Label(row1, text="Időtáv:").pack(side=tk.LEFT, padx=(0, 4))
         self.interval_var = tk.StringVar(value=self.settings.default_interval)
@@ -330,32 +335,49 @@ class BinanceApp(tk.Tk):
             side=tk.BOTTOM, fill=tk.X
         )
 
-    # ---------- Szimbólumlista / autocomplete ----------
+    # ---------- Szimbólumlista / választó ----------
 
     def _load_symbols_async(self):
         def worker():
             try:
-                symbols = get_exchange_symbols()
+                infos = get_tradable_symbols()
             except BinanceAPIError as exc:
                 logger.warning("Szimbólumlista betöltése sikertelen: %s", exc)
                 return
-            self.after(0, self._on_symbols_loaded, symbols)
+            self.after(0, self._on_symbols_loaded, infos)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_symbols_loaded(self, symbols: list[str]):
-        self._all_symbols = symbols
-        self.symbol_combo["values"] = symbols
-        self.status_var.set(f"Kész. ({len(symbols)} kereskedhető szimbólum betöltve)")
+    def _on_symbols_loaded(self, infos: list[SymbolInfo]):
+        self._all_symbol_infos = infos
+        self._all_symbols = {info.symbol for info in infos}
+        self.status_var.set(f"Kész. ({len(infos)} kereskedhető szimbólum betöltve)")
 
-    def _on_symbol_keyrelease(self, event):
-        if event.keysym in ("Up", "Down", "Return", "Escape", "Tab"):
+    def _open_symbol_picker(self):
+        if not self._all_symbol_infos:
+            messagebox.showinfo(
+                "Szimbólumlista", "A szimbólumlista még töltődik, próbáld meg pár másodperc múlva.", parent=self
+            )
             return
-        typed = self.symbol_var.get().upper()
-        if not self._all_symbols:
-            return
-        matches = [s for s in self._all_symbols if typed in s] if typed else self._all_symbols
-        self.symbol_combo["values"] = matches[:30]
+        SymbolPickerDialog(
+            self,
+            symbols=self._all_symbol_infos,
+            favorites=set(self.settings.favorite_symbols),
+            current_symbol=self.symbol_var.get().strip().upper(),
+            on_select=self._on_symbol_picked,
+            on_toggle_favorite=self._on_favorite_toggled,
+        )
+
+    def _on_symbol_picked(self, symbol: str):
+        self.symbol_var.set(symbol)
+
+    def _on_favorite_toggled(self, symbol: str, is_favorite: bool):
+        favorites = self.settings.favorite_symbols
+        if is_favorite and symbol not in favorites:
+            favorites.append(symbol)
+        elif not is_favorite and symbol in favorites:
+            favorites.remove(symbol)
+        self.settings.save()
 
     # ---------- Bemenet begyűjtése ----------
 
