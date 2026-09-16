@@ -11,8 +11,13 @@ frissítéssel.
 - SMA, Bollinger szalagok, RSI, MACD, volumen - egyenként ki/be kapcsolható panelek
 - Élő (automatikus) frissítés testreszabható időközzel
 - Egérrel követhető kereszt (crosshair) OHLC tooltippel a charton
-- Görgővel nagyítás/kicsinyítés (arányos ár-skálával), jobb gombos húzással mozgatás
-- Kereshető szimbólum-választó ablak (🔍), "BASE/QUOTE" formázással és csillagozható kedvencekkel
+- Görgővel nagyítás/kicsinyítés (arányos ár-skálával), jobb gombos húzással mozgatás -
+  a nézet (zoom/pozíció) megmarad élő frissítésnél/újra-lekérésnél, csak szimbólumváltáskor
+  áll vissza teljes nézetre
+- Elegáns chart-fejléc: nemzetközi pénznemjel (₿, Ξ, $, € stb.) ha van ismert, a teljes
+  pár/időtáv hover-tooltipben; a chart belső címe is "BASE/QUOTE" formátumú
+- Kereshető szimbólum-választó ablak (🔍), nagy előnézeti sávval, pénznemjelekkel és
+  csillagozható kedvencekkel
 - ⭐ Watchlist oldalsáv: az összes kedvenc ára és 24 órás %-os változása egyszerre látszik,
   kb. 15 mp-enként frissülve - kattintással betölthető a chartra
 - 📡 Piac-szűrő (Eszközök menü): technikai pontszázalékot (RSI+MACD+trend+Bollinger,
@@ -32,6 +37,7 @@ src/binance_ta/
     indicators.py       SMA / RSI / MACD / Bollinger számítás (pandas)
     gui.py              Tkinter GUI + candlestick chart (mplfinance)
     symbol_picker.py    Kereshető szimbólum-választó ablak (kedvencekkel)
+    currency_symbols.py  Nemzetközi pénznemjelek (₿, Ξ, $, € stb.), ha ismertek
     scoring.py           Folytonos technikai pontszám (-100%..+100%) egy dataframere
     screener.py           Piac-szintű szken korlátozott párhuzamossággal
     screener_window.py     Piac-szűrő ablak (eredménytábla, küszöb szerinti jelzés)

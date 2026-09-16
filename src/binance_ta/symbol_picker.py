@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from binance_ta.client import SymbolInfo
+from binance_ta.currency_symbols import format_pair_glyph, symbol_for
 
 STAR_ON = "★"
 STAR_OFF = "☆"
@@ -29,6 +30,7 @@ class SymbolPickerDialog(tk.Toplevel):
         self.grab_set()
 
         self._symbols = symbols
+        self._symbol_by_name = {info.symbol: info for info in symbols}
         self._favorites = favorites
         self._current_symbol = current_symbol
         self._on_select = on_select
@@ -45,6 +47,17 @@ class SymbolPickerDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=10)
         frm.pack(fill=tk.BOTH, expand=True)
 
+        # Nagy, elegáns előnézeti sáv a kijelölt párról - ez ad "popup-szerű",
+        # nem csak apró szöveges megjelenést a kiválasztott elemnek.
+        preview = ttk.Frame(frm)
+        preview.pack(fill=tk.X, pady=(0, 8))
+        self.preview_glyph_var = tk.StringVar(value="")
+        ttk.Label(preview, textvariable=self.preview_glyph_var, font=("Segoe UI", 22, "bold")).pack(side=tk.LEFT)
+        self.preview_name_var = tk.StringVar(value="Válassz egy kereskedési párt")
+        ttk.Label(preview, textvariable=self.preview_name_var, font=("Segoe UI", 11), foreground="#555555").pack(
+            side=tk.LEFT, padx=(10, 0)
+        )
+
         self.search_var = tk.StringVar()
         self.search_entry = ttk.Entry(frm, textvariable=self.search_var)
         self.search_entry.pack(fill=tk.X, pady=(0, 8))
@@ -54,12 +67,14 @@ class SymbolPickerDialog(tk.Toplevel):
         tree_frame = ttk.Frame(frm)
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ("star", "pair")
+        columns = ("star", "glyph", "pair")
         tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
         tree.heading("star", text="")
+        tree.heading("glyph", text="")
         tree.heading("pair", text="Kereskedési pár")
-        tree.column("star", width=32, anchor="center", stretch=False)
-        tree.column("pair", width=260, anchor="w")
+        tree.column("star", width=28, anchor="center", stretch=False)
+        tree.column("glyph", width=36, anchor="center", stretch=False)
+        tree.column("pair", width=230, anchor="w")
         tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
 
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
@@ -69,6 +84,7 @@ class SymbolPickerDialog(tk.Toplevel):
         tree.bind("<Button-1>", self._on_click)
         tree.bind("<Double-1>", self._on_activate)
         tree.bind("<Return>", self._on_activate)
+        tree.bind("<<TreeviewSelect>>", self._on_selection_changed)
 
         self.tree = tree
 
@@ -91,7 +107,12 @@ class SymbolPickerDialog(tk.Toplevel):
         select_iid = None
         for info in matches:
             star = STAR_ON if info.symbol in self._favorites else STAR_OFF
-            tree.insert("", tk.END, iid=info.symbol, values=(star, info.display))
+            # A glyph oszlop csak az alapeszköz ismert nemzetközi jelét mutatja
+            # (pl. ₿ minden BTC/... párnál) - a quote oldalt szándékosan nem
+            # keverjük bele, mert sok "XXX/BTC" pár esetén a "XXX/₿" szöveg már
+            # nem férne el a keskeny oszlopban, és csonkolva jelenne meg.
+            glyph = symbol_for(info.base_asset) or ""
+            tree.insert("", tk.END, iid=info.symbol, values=(star, glyph, info.display))
             if info.symbol == self._current_symbol:
                 select_iid = info.symbol
 
@@ -100,6 +121,7 @@ class SymbolPickerDialog(tk.Toplevel):
             tree.see(select_iid)
         elif matches:
             tree.selection_set(matches[0].symbol)
+        self._on_selection_changed()
 
     def _focus_tree(self, _event=None):
         children = self.tree.get_children()
@@ -127,6 +149,18 @@ class SymbolPickerDialog(tk.Toplevel):
             self._favorites.discard(symbol)
         self._on_toggle_favorite(symbol, is_now_favorite)
         self._populate(self.search_var.get())
+
+    def _on_selection_changed(self, _event=None):
+        selection = self.tree.selection()
+        if not selection:
+            self.preview_glyph_var.set("")
+            self.preview_name_var.set("Válassz egy kereskedési párt")
+            return
+        info = self._symbol_by_name.get(selection[0])
+        if info is None:
+            return
+        self.preview_glyph_var.set(format_pair_glyph(info.base_asset, info.quote_asset))
+        self.preview_name_var.set(info.display)
 
     def _on_activate(self, _event=None):
         selection = self.tree.selection()

@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_klines, get_ticker_prices, get_tradable_symbols
+from binance_ta.currency_symbols import format_pair_glyph
 from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
 from binance_ta.logging_setup import configure_logging
@@ -165,6 +166,9 @@ class BinanceApp(tk.Tk):
         self._tooltips: list[ToolTip] = []
         self.canvas = None
         self.toolbar = None
+        self._chart_symbol: str | None = None
+        self._chart_interval: str | None = None
+        self._chart_df: pd.DataFrame | None = None
 
         self._apply_system_theme()
         self._build_menu()
@@ -374,13 +378,46 @@ class BinanceApp(tk.Tk):
 
         self._build_watchlist(content)
 
-        self.chart_frame = ttk.Frame(content)
-        self.chart_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        chart_container = ttk.Frame(content)
+        chart_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._build_chart_header(chart_container)
+
+        self.chart_frame = ttk.Frame(chart_container)
+        self.chart_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         ttk.Label(
             self.chart_frame,
             text="Add meg a szimbólumot és nyomd meg a '🔄 Lekérés és rajzolás' gombot.",
             anchor="center",
         ).pack(expand=True)
+
+    def _build_chart_header(self, parent):
+        """Elegáns fejléc a chart fölött: pénznemjel/ticker nagy betűvel, a teljes
+        névvel/időtávval csak hover-tooltipben - nem foglalja a helyet a charton."""
+        header = ttk.Frame(parent, padding=(10, 8, 10, 4))
+        header.pack(side=tk.TOP, fill=tk.X)
+
+        self.chart_header_var = tk.StringVar(value="")
+        label = ttk.Label(header, textvariable=self.chart_header_var, font=("Segoe UI", 18, "bold"))
+        label.pack(side=tk.LEFT)
+
+        self.chart_header_sub_var = tk.StringVar(value="")
+        ttk.Label(header, textvariable=self.chart_header_sub_var, foreground="#888888", font=("Segoe UI", 10)).pack(
+            side=tk.LEFT, padx=(10, 0), pady=(6, 0)
+        )
+
+        self.chart_header_tooltip = ToolTip(label, "", enabled_getter=lambda: self.settings.show_tooltips)
+        self._tooltips.append(self.chart_header_tooltip)
+
+    def _update_chart_header(self, symbol: str, interval: str):
+        info = self._symbol_info_by_name.get(symbol)
+        if info:
+            self.chart_header_var.set(format_pair_glyph(info.base_asset, info.quote_asset))
+            self.chart_header_tooltip.text = f"{info.display} ({symbol}) · {interval} idősík"
+        else:
+            self.chart_header_var.set(symbol)
+            self.chart_header_tooltip.text = f"{symbol} · {interval} idősík"
+        self.chart_header_sub_var.set(interval)
 
     def _build_watchlist(self, parent):
         frame = ttk.LabelFrame(parent, text="⭐ Watchlist", width=210)
@@ -682,6 +719,15 @@ class BinanceApp(tk.Tk):
     # ---------- Rajzolás ----------
 
     def _draw_chart(self, df: pd.DataFrame, symbol: str, interval: str, opts: dict):
+        # Ha ugyanaz a szimbólum/időtáv frissül (élő frissítés vagy újra-lekérés),
+        # megőrizzük a felhasználó aktuális nagyítását/pozícióját - anélkül minden
+        # frissítéskor visszaugrana a teljes nézetre.
+        view_state = None
+        if self.canvas is not None and symbol == self._chart_symbol and interval == self._chart_interval:
+            view_state = self._capture_view_state()
+
+        self._update_chart_header(symbol, interval)
+
         for child in self.chart_frame.winfo_children():
             child.destroy()
 
@@ -724,6 +770,10 @@ class BinanceApp(tk.Tk):
             )
             next_panel += 1
 
+        info = self._symbol_info_by_name.get(symbol)
+        pair_display = info.display if info else symbol
+        quote_label = info.quote_asset if info else ""
+
         fig, axlist = mpf.plot(
             ohlc,
             type="candle",
@@ -732,8 +782,8 @@ class BinanceApp(tk.Tk):
             volume=opts["volume"],
             returnfig=True,
             figsize=(12, 7),
-            title=f"{symbol}  ({interval})",
-            ylabel="Ár (USDT)",
+            title=f"{pair_display}  ({interval})",
+            ylabel=f"Ár ({quote_label})" if quote_label else "Ár",
             show_nontrading=False,
             datetime_format="%m-%d %H:%M",
             xrotation=15,
@@ -749,6 +799,12 @@ class BinanceApp(tk.Tk):
 
         self.canvas = canvas
         self.toolbar = toolbar
+        self._chart_symbol = symbol
+        self._chart_interval = interval
+        self._chart_df = df
+
+        if view_state is not None:
+            self._restore_view_state(axlist[0], df, view_state)
 
         self._attach_crosshair(axlist[0], df)
         self._attach_scroll_zoom(axlist[0], df)
@@ -759,6 +815,33 @@ class BinanceApp(tk.Tk):
             "az ár-skála arányosan követi). Jobb egérgombbal húzva mozgathatod balra-jobbra.\n"
             "Az eszköztár Home gombja visszaállítja az eredeti nézetet.",
         )
+
+    def _capture_view_state(self):
+        """Az aktuális chart látható idő-tartománya (dátum-dátum), hogy
+        frissítés után a pontosan ugyanazt az időszakot tudjuk visszaállítani -
+        az index alapú xlim frissítéskor nem lenne pontos, mert a friss
+        adatban a gyertyák időben eltolódnak."""
+        if self._chart_df is None:
+            return None
+        ax = self.canvas.figure.axes[0]
+        xmin, xmax = ax.get_xlim()
+        n = len(self._chart_df)
+        lo = max(0, min(n - 1, int(round(xmin))))
+        hi = max(0, min(n - 1, int(round(xmax))))
+        if hi <= lo:
+            return None
+        return (self._chart_df["open_time"].iloc[lo], self._chart_df["open_time"].iloc[hi])
+
+    def _restore_view_state(self, ax, new_df: pd.DataFrame, view_state):
+        start_time, end_time = view_state
+        times = new_df["open_time"]
+        n = len(new_df)
+        lo = max(0, min(n - 1, int(times.searchsorted(start_time))))
+        hi = max(0, min(n - 1, int(times.searchsorted(end_time))))
+        if hi <= lo:
+            return
+        ax.set_xlim(lo, hi)
+        self._rescale_price_y(ax, new_df)
 
     def _attach_crosshair(self, ax, df: pd.DataFrame):
         """Egérrel követett szaggatott kereszt + OHLC tooltip az ár-panelen."""
