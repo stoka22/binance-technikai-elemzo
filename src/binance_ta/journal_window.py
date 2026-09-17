@@ -6,14 +6,15 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from binance_ta.rule_config import SEVERITY_ICONS, RuleConfigStore
 from binance_ta.trade_journal import TradeJournal
-from binance_ta.trade_rules import RULEBOOK, evaluate_trade
+from binance_ta.trade_rules import evaluate_trade
 
 logger = logging.getLogger(__name__)
 
 
 class JournalWindow(tk.Toplevel):
-    def __init__(self, parent: tk.Widget, journal: TradeJournal, fetch_klines_fn, on_show_rulebook):
+    def __init__(self, parent: tk.Widget, journal: TradeJournal, fetch_klines_fn, rule_store: RuleConfigStore, on_manage_rules):
         super().__init__(parent)
         self.title("📒 Kereskedési napló")
         self.geometry("780x560")
@@ -22,7 +23,8 @@ class JournalWindow(tk.Toplevel):
 
         self.journal = journal
         self._fetch_klines_fn = fetch_klines_fn
-        self._on_show_rulebook = on_show_rulebook
+        self._rules = rule_store.enabled_rules()
+        self._on_manage_rules = on_manage_rules
         self.violations_by_trade: dict[str, list] = {}
 
         self._build_ui()
@@ -32,7 +34,7 @@ class JournalWindow(tk.Toplevel):
     def _build_ui(self):
         top = ttk.Frame(self, padding=10)
         top.pack(side=tk.TOP, fill=tk.X)
-        ttk.Button(top, text="📖 Alapszabályok", command=self._on_show_rulebook).pack(side=tk.LEFT)
+        ttk.Button(top, text="⚙ Szabályok kezelése", command=self._on_manage_rules).pack(side=tk.LEFT)
         ttk.Button(top, text="🗑 Kijelölt törlése", command=self._on_delete_selected).pack(side=tk.LEFT, padx=(8, 0))
         self.status_var = tk.StringVar(value="")
         ttk.Label(top, textvariable=self.status_var, foreground="#888888").pack(side=tk.LEFT, padx=(12, 0))
@@ -144,13 +146,20 @@ class JournalWindow(tk.Toplevel):
             for violation in self.violations_by_trade.get(trade.id, []):
                 counts[violation.rule_id] = counts.get(violation.rule_id, 0) + 1
 
+        names: dict[str, str] = {}
+        severities: dict[str, str] = {}
+        for trade in closed_trades:
+            for violation in self.violations_by_trade.get(trade.id, []):
+                names[violation.rule_id] = violation.name
+                severities[violation.rule_id] = violation.severity
+
         self.mistakes_list.delete(0, tk.END)
         if not counts:
             self.mistakes_list.insert(tk.END, "Még nincs elég adat.")
             return
         for rule_id, count in sorted(counts.items(), key=lambda kv: kv[1], reverse=True):
-            title = RULEBOOK.get(rule_id, rule_id).split("\n", 1)[0]
-            self.mistakes_list.insert(tk.END, f"{count}×  {title}")
+            icon = SEVERITY_ICONS.get(severities.get(rule_id, ""), "")
+            self.mistakes_list.insert(tk.END, f"{count}×  {icon} {names.get(rule_id, rule_id)}")
 
     def _on_trade_selected(self, _event=None):
         selection = self.tree.selection()
@@ -171,9 +180,9 @@ class JournalWindow(tk.Toplevel):
         violations = self.violations_by_trade.get(trade.id, [])
         if violations:
             lines.append("")
-            lines.append("Észlelt hibák:")
+            lines.append("Észlelt jelzések:")
             for v in violations:
-                lines.append(f"• {v.message}")
+                lines.append(f"{SEVERITY_ICONS.get(v.severity, '')} {v.message}")
         self.detail_var.set("\n".join(lines))
 
     def _on_delete_selected(self):
@@ -208,7 +217,7 @@ class JournalWindow(tk.Toplevel):
                     continue
                 for trade in trades_for_symbol:
                     try:
-                        violations[trade.id] = evaluate_trade(df, trade)
+                        violations[trade.id] = evaluate_trade(df, trade, self._rules)
                     except Exception:
                         logger.exception("Hiba az ügylet kiértékelésekor (%s)", trade.id)
             self.after(0, self._on_violations_ready, violations)

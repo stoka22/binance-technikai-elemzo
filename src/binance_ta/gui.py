@@ -34,13 +34,15 @@ from binance_ta.indicator_info import INDICATOR_INFO
 from binance_ta.indicators import add_bollinger_bands, add_macd, add_rsi, add_sma
 from binance_ta.journal_window import JournalWindow
 from binance_ta.logging_setup import configure_logging
+from binance_ta.rule_config import SEVERITY_ICONS, RuleConfigStore
+from binance_ta.rules_window import RulesWindow
 from binance_ta.screener_window import ScreenerWindow
 from binance_ta.scoring import ILLIQUID_ZERO_VOLUME_RATIO, compute_score_series, find_signal_crossings
 from binance_ta.settings import Settings
 from binance_ta.symbol_picker import SymbolPickerDialog
 from binance_ta.tooltip import ToolTip
 from binance_ta.trade_journal import TradeJournal
-from binance_ta.trade_rules import RULEBOOK, evaluate_trade
+from binance_ta.trade_rules import evaluate_trade
 from binance_ta.win_theme import enable_dark_titlebar, prefers_dark
 
 logger = logging.getLogger(__name__)
@@ -175,6 +177,7 @@ class BinanceApp(tk.Tk):
         self._chart_df: pd.DataFrame | None = None
 
         self.trade_journal = TradeJournal()
+        self.rule_store = RuleConfigStore()
 
         self._apply_system_theme()
         self._build_menu()
@@ -238,6 +241,7 @@ class BinanceApp(tk.Tk):
         tools_menu = tk.Menu(menubar, tearoff=0)
         tools_menu.add_command(label="📡 Piac-szűrő...", command=self._open_screener)
         tools_menu.add_command(label="📒 Kereskedési napló...", command=self._open_journal)
+        tools_menu.add_command(label="⚙ Szabályok kezelése...", command=self._open_rules_window)
         menubar.add_cascade(label="Eszközök", menu=tools_menu)
 
         settings_menu = tk.Menu(menubar, tearoff=0)
@@ -246,7 +250,6 @@ class BinanceApp(tk.Tk):
 
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="ℹ Indikátorok magyarázata", command=self._show_all_indicator_info)
-        help_menu.add_command(label="📖 Kereskedési alapszabályok", command=self._show_trade_rulebook)
         help_menu.add_separator()
         help_menu.add_command(label="Névjegy", command=self._show_about)
         menubar.add_cascade(label="Súgó", menu=help_menu)
@@ -275,11 +278,10 @@ class BinanceApp(tk.Tk):
         self.on_fetch(manual=True)
 
     def _open_journal(self):
-        JournalWindow(self, self.trade_journal, fetch_klines, self._show_trade_rulebook)
+        JournalWindow(self, self.trade_journal, fetch_klines, self.rule_store, self._open_rules_window)
 
-    def _show_trade_rulebook(self):
-        text = "\n\n".join(RULEBOOK.values())
-        messagebox.showinfo("📖 Kereskedési alapszabályok", text, parent=self)
+    def _open_rules_window(self):
+        RulesWindow(self, self.rule_store)
 
     def _on_settings_saved(self, settings: Settings):
         self.settings = settings
@@ -1099,15 +1101,15 @@ class BinanceApp(tk.Tk):
         else:
             self.trade_journal.close_trade(open_trade, time_str, price)
             pnl = open_trade.pnl_percent
-            violations = evaluate_trade(df, open_trade)
+            violations = evaluate_trade(df, open_trade, self.rule_store.enabled_rules())
             icon = "✅" if pnl >= 0 else "❌"
             self.practice_status_var.set(f"{icon} Lezárva: {pnl:+.2f}%  |  Nincs nyitott gyakorló pozíció.")
 
             label = "Long" if open_trade.direction == "long" else "Short"
             if violations:
-                issues_text = "\n".join(f"• {v.message}" for v in violations)
+                issues_text = "\n".join(f"{SEVERITY_ICONS[v.severity]} {v.message}" for v in violations)
             else:
-                issues_text = f"Nem találtunk szabálysértést ennél az ügyletnél.\nHozam: {pnl:+.2f}%."
+                issues_text = f"Nem találtunk szabálysértést/figyelmeztetést ennél az ügyletnél.\nHozam: {pnl:+.2f}%."
             messagebox.showinfo(
                 f"{icon} Ügylet lezárva: {pnl:+.2f}%",
                 f"{symbol} · {label}\n\nBelépés: {open_trade.entry_price:g}\nKilépés: {price:g}\n\n{issues_text}",

@@ -29,11 +29,15 @@ frissítéssel.
 - A rendszer aktuális (világos/sötét) témáját veszi fel induláskor
 - 🎯 Gyakorlás mód: kattints egy gyertyára a belépéshez, egy másikra a záráshoz -
   a szimulált (Long/Short) ügylet rögzítésre kerül a 📒 Kereskedési naplóban.
-  Minden lezárt ügyletet automatikusan összevetünk pár klasszikus alapszabállyal
-  (ne kereskedj a trend ellen, ne lépj be túlvett/túladott állapotban, vágd rövidre
-  a veszteséget, hagyd futni a nyereséget), a napló-ablak pedig kimutatja a nyerő
-  arányt, a profit faktort és a leggyakoribb hibákat - ez segít saját, automata
-  szűrő-szabályokat (pl. a Piac-szűrőben) felállítani
+  Minden lezárt ügyletet automatikusan összevetünk a konfigurált szabályokkal, a
+  napló-ablak pedig kimutatja a nyerő arányt, a profit faktort és a leggyakoribb
+  jelzéseket - ez segít saját, automata szűrő-szabályokat (pl. a Piac-szűrőben)
+  felállítani
+- ⚙ Szabályok kezelése (Eszközök menü): 3 súlyossági szint (ℹ️ Info / ⚠️ Figyelmeztetés /
+  ❌ Szabálysértés), a 4 beépített szabály (trend, RSI-szélsőség, nincs stop-loss, korai
+  zárás) ki/bekapcsolható és paraméterezhető, saját szabály pedig biztonságos
+  építőelemekből (indikátor + összehasonlítás + érték + Long/Short/mindkettő)
+  hozható létre - nincs szabad kódfuttatás
 - 🔔 Javasolt be-/kilépési jelzések a charton: zöld ▲ / piros ▼ ott, ahol a Piac-szűrővel
   azonos technikai pontszám átlépi a Beállításokban megadott küszöböt (visszatekintő,
   tanulási célú - nem előrejelzés)
@@ -54,8 +58,10 @@ src/binance_ta/
     screener.py           Piac-szintű szken korlátozott párhuzamossággal
     screener_window.py     Piac-szűrő ablak (eredménytábla, küszöb szerinti jelzés)
     trade_journal.py     Gyakorló ügyletek (Trade, TradeJournal) - JSON perzisztencia
-    trade_rules.py         Klasszikus alapszabályok + ügylet-kiértékelés
-    journal_window.py        Kereskedési napló ablak (statisztika, hibalista)
+    rule_config.py         Konfigurálható szabályok (RuleConfig, RuleConfigStore)
+    trade_rules.py           Szabály-kiértékelő (kind szerint elágazva)
+    rules_window.py            Szabályok kezelése ablak + szabály-szerkesztő
+    journal_window.py            Kereskedési napló ablak (statisztika, hibalista)
     settings.py         Felhasználói beállítások (JSON perzisztencia)
     tooltip.py          Újrahasznosítható hover-tooltip widget
     indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz
@@ -100,4 +106,5 @@ Az eredmény: `dist\BinanceTA.exe`.
 
 - Napló: `%USERPROFILE%\.binance_ta\binance_ta.log` (forgatva, max. 3×1 MB)
 - Beállítások: `%USERPROFILE%\.binance_ta\settings.json`
+- Gyakorlás szabályai: `%USERPROFILE%\.binance_ta\rules.json`
 - Gyakorló ügyletek: `%USERPROFILE%\.binance_ta\trades.json`
