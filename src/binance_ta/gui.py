@@ -29,6 +29,7 @@ matplotlib.use("Agg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 from binance_ta.candlestick_patterns import detect_patterns, dominant_pattern_per_index
+from binance_ta.chart_patterns import detect_chart_patterns
 from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_klines, get_ticker_prices, get_tradable_symbols
 from binance_ta.currency_symbols import format_pair_glyph
 from binance_ta.indicator_info import INDICATOR_INFO
@@ -383,6 +384,9 @@ class BinanceApp(tk.Tk):
         self.patterns_enabled = tk.BooleanVar(value=False)
         self._add_indicator_cell(indicators, 6, "🕯 Alakzatok", self.patterns_enabled, None, "Alakzatok")
 
+        self.chart_patterns_enabled = tk.BooleanVar(value=False)
+        self._add_indicator_cell(indicators, 7, "📐 Formációk", self.chart_patterns_enabled, None, "Formációk")
+
         self._build_practice_panel(bar)
 
     def _build_practice_panel(self, parent):
@@ -663,6 +667,7 @@ class BinanceApp(tk.Tk):
             "volume": self.volume_enabled.get(),
             "signals": self.signals_enabled.get(),
             "patterns": self.patterns_enabled.get(),
+            "chart_patterns": self.chart_patterns_enabled.get(),
         }
 
     # ---------- Adatlekérés ----------
@@ -915,7 +920,15 @@ class BinanceApp(tk.Tk):
         if view_state is not None:
             self._restore_view_state(axlist[0], df, view_state)
 
-        self._attach_crosshair(axlist[0], df, dominant_patterns)
+        chart_pattern_names_by_index: dict[int, list[str]] = {}
+        if opts["chart_patterns"]:
+            chart_matches = detect_chart_patterns(df)
+            self._draw_chart_pattern_markers(axlist[0], chart_matches)
+            for match in chart_matches:
+                for idx in match.indices:
+                    chart_pattern_names_by_index.setdefault(idx, []).append(match.name)
+
+        self._attach_crosshair(axlist[0], df, dominant_patterns, chart_pattern_names_by_index)
         self._attach_scroll_zoom(axlist[0], df)
         self._attach_pan(axlist[0], df)
         self._attach_trade_clicks(axlist[0], df, symbol, interval)
@@ -954,12 +967,16 @@ class BinanceApp(tk.Tk):
         ax.set_xlim(lo, hi)
         self._rescale_price_y(ax, new_df)
 
-    def _attach_crosshair(self, ax, df: pd.DataFrame, dominant_patterns: dict | None = None):
+    def _attach_crosshair(
+        self, ax, df: pd.DataFrame, dominant_patterns: dict | None = None, chart_pattern_names_by_index: dict | None = None
+    ):
         """Egérrel követett szaggatott kereszt + OHLC tooltip az ár-panelen.
 
-        Ha `dominant_patterns` tartalmaz találatot az adott gyertyára, a
-        felismert alakzat neve is megjelenik a tooltipben."""
+        Ha `dominant_patterns`/`chart_pattern_names_by_index` tartalmaz
+        találatot az adott gyertyára, a felismert alakzat(ok) neve is
+        megjelenik a tooltipben."""
         dominant_patterns = dominant_patterns or {}
+        chart_pattern_names_by_index = chart_pattern_names_by_index or {}
         vline = ax.axvline(color="gray", lw=0.6, ls=":", visible=False)
         hline = ax.axhline(color="gray", lw=0.6, ls=":", visible=False)
         annot = ax.annotate(
@@ -999,11 +1016,39 @@ class BinanceApp(tk.Tk):
                 # sima szöveg (nem emoji) - a matplotlib alapértelmezett betűkészlete
                 # nem tartalmaz minden Unicode emoji glyph-et, "hiányzó jel" dobozt adna
                 text += f"\nAlakzat: {pattern.name}"
+            chart_pattern_names = chart_pattern_names_by_index.get(x)
+            if chart_pattern_names:
+                text += "\nFormáció: " + ", ".join(chart_pattern_names)
             annot.set_text(text)
             annot.set_visible(True)
             event.canvas.draw_idle()
 
         ax.figure.canvas.mpl_connect("motion_notify_event", on_move)
+
+    def _draw_chart_pattern_markers(self, ax, matches):
+        """A felismert pivot-alapú chart-alakzatok (dupla csúcs/alj, fej-váll)
+        pontjait köti össze egy vékony vonallal, és rövid felirattal jelöli.
+
+        Közvetlenül az Axes-re rajzolunk (nem mplfinance addplot-tal), mert
+        az addplot NaN-nal kihagyott (nem szomszédos) pontok között nem húz
+        össze vonalat - itt viszont pont ez kell (2-3 konkrét pivot pont
+        összekötése, a köztük lévő gyertyák kihagyásával)."""
+        for match in matches:
+            color = "#0ecb81" if match.bullish else "#f6465d"
+            xs, ys = list(match.indices), list(match.prices)
+            ax.plot(xs, ys, color=color, linewidth=1.4, marker="D", markersize=6, alpha=0.9, zorder=5)
+
+            label = match.name.split(" (")[0]
+            if match.bullish:
+                label_i = ys.index(min(ys))
+                offset = (0, -14)
+            else:
+                label_i = ys.index(max(ys))
+                offset = (0, 10)
+            ax.annotate(
+                label, xy=(xs[label_i], ys[label_i]), xytext=offset, textcoords="offset points",
+                ha="center", fontsize=7, color=color, fontweight="bold", zorder=6,
+            )
 
     def _rescale_price_y(self, ax, df: pd.DataFrame):
         """Az ár-tengely (y) arányos beállítása a jelenleg látható gyertyákhoz.

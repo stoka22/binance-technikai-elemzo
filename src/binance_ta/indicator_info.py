@@ -2,6 +2,7 @@
 gombokhoz - tanulási céllal, hogy a felhasználó megértse, mit néz."""
 
 from binance_ta.candlestick_patterns import PATTERN_INFO
+from binance_ta.chart_patterns import CHART_PATTERN_INFO
 
 INDICATOR_INFO: dict[str, str] = {
     "SMA": (
@@ -59,5 +60,14 @@ INDICATOR_INFO: dict[str, str] = {
         "felismert alakzatokat (zöld=bullish, piros=bearish, szürke=semleges) "
         "- vidd az egeret a jelölt gyertyára a pontos névért.\n\n"
         + "\n\n".join(f"{name}\n{desc}" for name, desc in PATTERN_INFO.items())
+    ),
+    "Formációk": (
+        "Chart-alakzatok (chart pattern) felismerése\n\n"
+        "Előbb megkeressük a helyi csúcsokat/mélypontokat (pivot pontokat), "
+        "majd ezekre illesztünk geometriai szabályokat - ahogy pl. az "
+        "Autochartist is teszi, NEM gépi tanulással. Bekapcsolva egy vékony "
+        "vonal köti össze az alakzat pontjait a charton (zöld=bullish, "
+        "piros=bearish), rövid felirattal.\n\n"
+        + "\n\n".join(f"{name}\n{desc}" for name, desc in CHART_PATTERN_INFO.items())
     ),
 }

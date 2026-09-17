@@ -46,6 +46,10 @@ frissítéssel.
   NEM gépi tanulással. Színes pont jelöli a chart-on (zöld/piros/szürke), vidd rá az
   egeret a pontos névért; egy volatilitás-szűrő kiszűri a jelentéktelen, csendes
   szakaszokban is "technikailag illő" mintákat, hogy ne legyen zajos a jelölés
+- 📐 Chart-alakzat (pivot-alapú) felismerés: dupla csúcs/alj és fej-váll/fordított
+  fej-váll alakzatok, a helyi csúcs-/mélypontok (pivot pontok) geometriai
+  vizsgálatával, ahogy pl. az Autochartist is teszi. A charton vonal köti össze az
+  alakzat pontjait, rövid felirattal
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)
@@ -71,6 +75,7 @@ src/binance_ta/
     tooltip.py          Újrahasznosítható hover-tooltip widget
     indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz
     candlestick_patterns.py Gyertya-alakzat felismerés (geometriai szabályokkal)
+    chart_patterns.py         Pivot-alapú chart-alakzat felismerés (dupla csúcs/alj, fej-váll)
     win_theme.py         Windows sötét/világos mód érzékelése + sötét címsor
     logging_setup.py     Fájlba forgatott + konzol logging
 tests/                  pytest unit tesztek (indikátorok, API kliens, beállítások)
