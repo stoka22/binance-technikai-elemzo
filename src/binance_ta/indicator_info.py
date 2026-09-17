@@ -1,6 +1,8 @@
 """Rövid, magyar nyelvű indikátor-leírások a Súgó menühöz és az info
 gombokhoz - tanulási céllal, hogy a felhasználó megértse, mit néz."""
 
+from binance_ta.candlestick_patterns import PATTERN_INFO
+
 INDICATOR_INFO: dict[str, str] = {
     "SMA": (
         "SMA - Simple Moving Average (egyszerű mozgóátlag)\n\n"
@@ -48,5 +50,14 @@ INDICATOR_INFO: dict[str, str] = {
         "alatt marad.\n\n"
         "Ez egy tanulási célú, visszatekintő jelzésrendszer - NEM "
         "befektetési tanács és nem garantál semmit a jövőre nézve."
+    ),
+    "Alakzatok": (
+        "Gyertya-alakzatok (candlestick pattern) felismerése\n\n"
+        "Tiszta geometriai szabályokkal (test/lengés arányok, szomszédos "
+        "gyertyák viszonya) - ahogy a legtöbb charting platform is teszi, "
+        "NEM gépi tanulással. Bekapcsolva a charton színes pont jelöli a "
+        "felismert alakzatokat (zöld=bullish, piros=bearish, szürke=semleges) "
+        "- vidd az egeret a jelölt gyertyára a pontos névért.\n\n"
+        + "\n\n".join(f"{name}\n{desc}" for name, desc in PATTERN_INFO.items())
     ),
 }

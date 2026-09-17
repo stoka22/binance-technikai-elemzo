@@ -28,6 +28,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+from binance_ta.candlestick_patterns import detect_patterns, dominant_pattern_per_index
 from binance_ta.client import BinanceAPIError, SymbolInfo, TickerInfo, fetch_klines, get_ticker_prices, get_tradable_symbols
 from binance_ta.currency_symbols import format_pair_glyph
 from binance_ta.indicator_info import INDICATOR_INFO
@@ -379,6 +380,9 @@ class BinanceApp(tk.Tk):
         self.signals_enabled = tk.BooleanVar(value=False)
         self._add_indicator_cell(indicators, 5, "🔔 Jelzések", self.signals_enabled, None, "Jelzések")
 
+        self.patterns_enabled = tk.BooleanVar(value=False)
+        self._add_indicator_cell(indicators, 6, "🕯 Alakzatok", self.patterns_enabled, None, "Alakzatok")
+
         self._build_practice_panel(bar)
 
     def _build_practice_panel(self, parent):
@@ -658,6 +662,7 @@ class BinanceApp(tk.Tk):
             "macd": self.macd_enabled.get(),
             "volume": self.volume_enabled.get(),
             "signals": self.signals_enabled.get(),
+            "patterns": self.patterns_enabled.get(),
         }
 
     # ---------- Adatlekérés ----------
@@ -827,6 +832,32 @@ class BinanceApp(tk.Tk):
                     mpf.make_addplot(sell_marker, panel=0, type="scatter", markersize=90, marker="v", color="#f6465d")
                 )
 
+        dominant_patterns: dict[int, object] = {}
+        if opts["patterns"]:
+            dominant_patterns = dominant_pattern_per_index(detect_patterns(df))
+            bullish_idx = [i for i, m in dominant_patterns.items() if m.bullish is True]
+            bearish_idx = [i for i, m in dominant_patterns.items() if m.bullish is False]
+            neutral_idx = [i for i, m in dominant_patterns.items() if m.bullish is None]
+
+            # a látható ár-tartomány (nem az abszolút ár) %-ában számolt, kis
+            # eltolás - így a jelölő szorosan a gyertya mellett marad, nem
+            # "lebeg" messze fölötte/alatta magas árszintű szimbólumoknál.
+            price_span = indexed["high"].max() - indexed["low"].min()
+            offset = price_span * 0.015 if price_span > 0 else 0
+
+            if bullish_idx:
+                marker = pd.Series(float("nan"), index=indexed.index)
+                marker.iloc[bullish_idx] = indexed["low"].iloc[bullish_idx] - offset
+                addplots.append(mpf.make_addplot(marker, panel=0, type="scatter", markersize=45, marker="o", color="#0ecb81"))
+            if bearish_idx:
+                marker = pd.Series(float("nan"), index=indexed.index)
+                marker.iloc[bearish_idx] = indexed["high"].iloc[bearish_idx] + offset
+                addplots.append(mpf.make_addplot(marker, panel=0, type="scatter", markersize=45, marker="o", color="#f6465d"))
+            if neutral_idx:
+                marker = pd.Series(float("nan"), index=indexed.index)
+                marker.iloc[neutral_idx] = indexed["high"].iloc[neutral_idx] + offset
+                addplots.append(mpf.make_addplot(marker, panel=0, type="scatter", markersize=45, marker="o", color="#999999"))
+
         next_panel = 2 if opts["volume"] else 1
         if opts["rsi"]:
             rsi_panel = next_panel
@@ -884,7 +915,7 @@ class BinanceApp(tk.Tk):
         if view_state is not None:
             self._restore_view_state(axlist[0], df, view_state)
 
-        self._attach_crosshair(axlist[0], df)
+        self._attach_crosshair(axlist[0], df, dominant_patterns)
         self._attach_scroll_zoom(axlist[0], df)
         self._attach_pan(axlist[0], df)
         self._attach_trade_clicks(axlist[0], df, symbol, interval)
@@ -923,8 +954,12 @@ class BinanceApp(tk.Tk):
         ax.set_xlim(lo, hi)
         self._rescale_price_y(ax, new_df)
 
-    def _attach_crosshair(self, ax, df: pd.DataFrame):
-        """Egérrel követett szaggatott kereszt + OHLC tooltip az ár-panelen."""
+    def _attach_crosshair(self, ax, df: pd.DataFrame, dominant_patterns: dict | None = None):
+        """Egérrel követett szaggatott kereszt + OHLC tooltip az ár-panelen.
+
+        Ha `dominant_patterns` tartalmaz találatot az adott gyertyára, a
+        felismert alakzat neve is megjelenik a tooltipben."""
+        dominant_patterns = dominant_patterns or {}
         vline = ax.axvline(color="gray", lw=0.6, ls=":", visible=False)
         hline = ax.axhline(color="gray", lw=0.6, ls=":", visible=False)
         annot = ax.annotate(
@@ -954,11 +989,17 @@ class BinanceApp(tk.Tk):
             hline.set_ydata([event.ydata, event.ydata])
             hline.set_visible(True)
             annot.xy = (x, event.ydata)
-            annot.set_text(
+            text = (
                 f"{row['open_time']:%Y-%m-%d %H:%M}\n"
                 f"O:{row['open']:.2f}  H:{row['high']:.2f}\n"
                 f"L:{row['low']:.2f}  C:{row['close']:.2f}"
             )
+            pattern = dominant_patterns.get(x)
+            if pattern is not None:
+                # sima szöveg (nem emoji) - a matplotlib alapértelmezett betűkészlete
+                # nem tartalmaz minden Unicode emoji glyph-et, "hiányzó jel" dobozt adna
+                text += f"\nAlakzat: {pattern.name}"
+            annot.set_text(text)
             annot.set_visible(True)
             event.canvas.draw_idle()
 

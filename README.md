@@ -41,6 +41,11 @@ frissítéssel.
 - 🔔 Javasolt be-/kilépési jelzések a charton: zöld ▲ / piros ▼ ott, ahol a Piac-szűrővel
   azonos technikai pontszám átlépi a Beállításokban megadott küszöböt (visszatekintő,
   tanulási célú - nem előrejelzés)
+- 🕯 Gyertya-alakzat felismerés: 16 klasszikus alakzat (Doji, Kalapács, Elnyelő minta,
+  Hajnal-/Alkonycsillag stb.) tiszta geometriai szabályokkal, ahogy a TA-Lib is teszi -
+  NEM gépi tanulással. Színes pont jelöli a chart-on (zöld/piros/szürke), vidd rá az
+  egeret a pontos névért; egy volatilitás-szűrő kiszűri a jelentéktelen, csendes
+  szakaszokban is "technikailag illő" mintákat, hogy ne legyen zajos a jelölés
 - Felugró súgó buborékok (tooltip) minden vezérlőn - Beállításokban ki/bekapcsolható
 - Kattintható ⓘ infó gombok az indikátorok mellett (rövid magyar magyarázat)
 - Perzisztens beállítások (`%USERPROFILE%\.binance_ta\settings.json`)
@@ -65,6 +70,7 @@ src/binance_ta/
     settings.py         Felhasználói beállítások (JSON perzisztencia)
     tooltip.py          Újrahasznosítható hover-tooltip widget
     indicator_info.py   Indikátor-leírások a Súgó menühöz / info gombokhoz
+    candlestick_patterns.py Gyertya-alakzat felismerés (geometriai szabályokkal)
     win_theme.py         Windows sötét/világos mód érzékelése + sötét címsor
     logging_setup.py     Fájlba forgatott + konzol logging
 tests/                  pytest unit tesztek (indikátorok, API kliens, beállítások)
